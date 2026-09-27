@@ -1,0 +1,30 @@
+[project]
+name = "collab-sol"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+      "pandas==2.2.3",
+      "numpy",
+      "pyarrow",
+      "duckdb",
+      "scikit-learn",
+      "lightgbm",
+      "xgboost",
+      "torch",
+      "optuna",
+      "rtdl-revisiting-models==0.0.2",
+      "matplotlib",
+  ]
+
+[project.scripts]
+collab-sol = "collab_sol:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name='collab_sol'
+module-root=''
