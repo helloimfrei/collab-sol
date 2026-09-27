@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 .python_version
+
+notebooks/
+data/*
