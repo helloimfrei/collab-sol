@@ -1,67 +1,30 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any
-
 import numpy as np
+import optuna
 import pytest
 from sklearn.datasets import make_classification
 
 from collab_sol.models import XGBoostModel
 
 
-class RecordingTrial:
-    def __init__(self) -> None:
-        self.names: list[str] = []
-
-    def suggest_int(
-        self,
-        name: str,
-        low: int,
-        high: int,
-        *,
-        step: int = 1,
-        log: bool = False,
-    ) -> int:
-        del high, step, log
-        self.names.append(name)
-        return low
-
-    def suggest_float(
-        self,
-        name: str,
-        low: float,
-        high: float,
-        *,
-        step: float | None = None,
-        log: bool = False,
-    ) -> float:
-        del high, step, log
-        self.names.append(name)
-        return low
-
-    def suggest_categorical(self, name: str, choices: Sequence[Any]) -> Any:
-        self.names.append(name)
-        return choices[0]
-
-
 def test_xgboost_exposes_search_space_through_shared_contract() -> None:
-    trial = RecordingTrial()
+    expected = {
+        "n_estimators": 500,
+        "learning_rate": 0.05,
+        "max_depth": 5,
+        "min_child_weight": 2.0,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "gamma": 0.01,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+    }
+    trial = optuna.trial.FixedTrial(expected)
 
     params = XGBoostModel.suggest_params(trial)
 
-    assert set(params) == {
-        "n_estimators",
-        "learning_rate",
-        "max_depth",
-        "min_child_weight",
-        "subsample",
-        "colsample_bytree",
-        "gamma",
-        "reg_alpha",
-        "reg_lambda",
-    }
-    assert trial.names == list(params)
+    assert params == expected
 
 
 @pytest.mark.parametrize("n_classes", [2, 4])

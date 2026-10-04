@@ -2,21 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Self, cast
-
 import numpy as np
-from numpy.typing import NDArray
 from sklearn.utils.class_weight import compute_sample_weight
 from xgboost import XGBClassifier
 
-from collab_sol.models.base import (
-    BaseModel,
-    FeatureMatrix,
-    ModelParams,
-    ParameterTrial,
-    TargetVector,
-)
+from collab_sol.models.base import BaseModel
 
 
 class XGBoostModel(BaseModel):
@@ -26,7 +16,7 @@ class XGBoostModel(BaseModel):
 
     def __init__(
         self,
-        params: Mapping[str, Any] | None = None,
+        params: dict | None = None,
         *,
         random_state: int = 42,
         balance_classes: bool = True,
@@ -38,7 +28,7 @@ class XGBoostModel(BaseModel):
         self._model: XGBClassifier | None = None
 
     @classmethod
-    def suggest_params(cls, trial: ParameterTrial) -> ModelParams:
+    def suggest_params(cls, trial):
         return {
             "n_estimators": trial.suggest_int(
                 "n_estimators", 300, 2_000, step=100
@@ -65,11 +55,11 @@ class XGBoostModel(BaseModel):
 
     def fit(
         self,
-        X_train: FeatureMatrix,
-        y_train: TargetVector,
-        X_valid: FeatureMatrix | None = None,
-        y_valid: TargetVector | None = None,
-    ) -> Self:
+        X_train,
+        y_train,
+        X_valid=None,
+        y_valid=None,
+    ):
         if (X_valid is None) != (y_valid is None):
             raise ValueError("Provide both X_valid and y_valid, or neither.")
 
@@ -81,7 +71,7 @@ class XGBoostModel(BaseModel):
             raise ValueError("Labels must be contiguous integers starting at 0.")
 
         n_classes = len(classes)
-        model_params: ModelParams = {
+        model_params = {
             "n_estimators": 2_000,
             "max_depth": 12,
             "learning_rate": 0.1,
@@ -105,20 +95,25 @@ class XGBoostModel(BaseModel):
             if self.balance_classes
             else None
         )
-        fit_params: ModelParams = {"verbose": False}
-        if sample_weight is not None:
-            fit_params["sample_weight"] = sample_weight
-        if X_valid is not None and y_valid is not None:
-            fit_params["eval_set"] = [(X_valid, y_valid)]
-
-        model.fit(X_train, y_train, **fit_params)
+        eval_set = (
+            [(X_valid, y_valid)]
+            if X_valid is not None and y_valid is not None
+            else None
+        )
+        model.fit(
+            X_train,
+            y_train,
+            sample_weight=sample_weight,
+            eval_set=eval_set,
+            verbose=False,
+        )
         self._model = model
         return self
 
-    def predict_proba(self, X: FeatureMatrix) -> NDArray[np.floating[Any]]:
+    def predict_proba(self, X):
         if self._model is None:
             raise RuntimeError("Call fit before predict_proba.")
-        return cast(NDArray[np.floating[Any]], self._model.predict_proba(X))
+        return self._model.predict_proba(X)
 
     @property
     def native_model(self) -> XGBClassifier:

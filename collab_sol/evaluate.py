@@ -1,15 +1,10 @@
 """Metrics shared by model tuning and final evaluation."""
 
-from typing import Any
-
 import numpy as np
-from numpy.typing import NDArray
 from sklearn.metrics import average_precision_score
 
 
-def binary_average_precision(
-    y_true: NDArray[Any], probabilities: NDArray[np.floating[Any]]
-) -> float:
+def binary_average_precision(y_true, probabilities: np.ndarray) -> float:
     """Score rare-event predictions using the positive-class probability."""
 
     if probabilities.ndim != 2 or probabilities.shape[1] != 2:

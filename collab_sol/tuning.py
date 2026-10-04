@@ -2,41 +2,22 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, Protocol, cast
-
 import numpy as np
 import optuna
-import pandas as pd
-from numpy.typing import NDArray
 
 from collab_sol.evaluate import binary_average_precision
-from collab_sol.models.base import BaseModel, FeatureMatrix
+from collab_sol.models.base import BaseModel
 from collab_sol.splitting import TemporalSplit
-
-
-class FoldPreprocessor(Protocol):
-    def fit_transform(
-        self, X: pd.DataFrame, y: pd.Series | None = None
-    ) -> FeatureMatrix: ...
-
-    def transform(self, X: pd.DataFrame) -> FeatureMatrix: ...
-
-
-ProbabilityScorer = Callable[
-    [NDArray[Any], NDArray[np.floating[Any]]],
-    float,
-]
 
 
 def tune_model(
     *,
     model_class: type[BaseModel],
-    X: pd.DataFrame,
-    y: pd.Series,
+    X,
+    y,
     split: TemporalSplit,
-    preprocessor_factory: Callable[[], FoldPreprocessor],
-    scorer: ProbabilityScorer = binary_average_precision,
+    preprocessor_factory,
+    scorer=binary_average_precision,
     n_trials: int = 20,
     random_state: int = 42,
     study_name: str | None = None,
@@ -96,4 +77,4 @@ def tune_model(
         load_if_exists=storage is not None,
     )
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
-    return cast(optuna.Study, study)
+    return study
