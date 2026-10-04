@@ -31,6 +31,7 @@ module-root=''
 
 [project.optional-dependencies]
 dev = [
+    "marimo",
     "pytest",
     "pyright",
 ]
