@@ -1,9 +1,9 @@
 [project]
 name = "collab-sol"
 version = "0.1.0"
-description = "Add your description here"
+description = "Grade-crossing risk and severity modeling"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
       "pandas==2.2.3",
       "numpy",
@@ -28,3 +28,16 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name='collab_sol'
 module-root=''
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pyright",
+]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
