@@ -8,6 +8,8 @@ dependencies = [
       "pandas==2.2.3",
       "numpy",
       "pyarrow",
+      "xarray",
+      "netcdf4",
       "duckdb",
       "scikit-learn",
       "lightgbm",
