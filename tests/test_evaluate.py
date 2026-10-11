@@ -29,8 +29,7 @@ def test_binary_risk_metrics_evaluate_continuous_scores() -> None:
     metrics = evaluate_binary_risk(labels, probabilities)
 
     assert metrics.average_precision == pytest.approx(1.0)
-    assert metrics.brier_score == pytest.approx(0.085)
-    assert metrics.log_loss > 0
+    assert metrics.prevalence == pytest.approx(0.5)
 
 
 def test_report_writes_metrics_risk_scores_and_curve(tmp_path) -> None:

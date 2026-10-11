@@ -10,8 +10,6 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import (
     average_precision_score,
-    brier_score_loss,
-    log_loss,
     precision_recall_curve,
 )
 
@@ -22,8 +20,6 @@ class RiskMetrics:
 
     prevalence: float
     average_precision: float
-    brier_score: float
-    log_loss: float
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -76,8 +72,6 @@ def evaluate_binary_risk(
     return RiskMetrics(
         prevalence=float(labels.mean()),
         average_precision=float(average_precision_score(labels, positive)),
-        brier_score=float(brier_score_loss(labels, positive)),
-        log_loss=float(log_loss(labels, positive, labels=[0, 1])),
     )
 
 
