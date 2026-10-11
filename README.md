@@ -1,9 +1,7 @@
 # collab-sol
 
 Modeling code for grade-crossing risk and conditional severity. The package
-starts from a completed crossing-year dataset; raw-source acquisition, cleaning,
-geospatial joins, weather aggregation, and target construction happen outside
-the package.
+accepts a completed crossing-year dataset as its input.
 
 The planned model panel is logistic regression, XGBoost, LightGBM, an MLP, and
 an FT-Transformer. Each model implements the `BaseModel` interface so the same
@@ -35,7 +33,7 @@ import pandas as pd
 
 from collab_sol.splitting import make_expanding_temporal_split
 
-frame = pd.read_parquet("data/processed/crossing_year_master.parquet")
+frame = pd.read_parquet("data/processed/final_dataset.parquet")
 split = make_expanding_temporal_split(frame, year_column="asof_year")
 
 X = frame[feature_columns]
@@ -60,6 +58,3 @@ needed.
 
 See `notebooks/modeling_demo.ipynb` for a small end-to-end Colab example using
 the final dataset, temporal tuning, final refitting, and holdout reporting.
-
-Dataset-construction work remains available on the local `final-dataset` and
-`dataset-pipeline` branches, but it is intentionally outside this package.
