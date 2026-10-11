@@ -13,6 +13,7 @@ dependencies = [
       "xgboost",
       "torch",
       "optuna",
+      "matplotlib",
       "rtdl-revisiting-models==0.0.2",
   ]
 
@@ -29,6 +30,9 @@ dev = [
     "marimo",
     "pytest",
     "pyright",
+]
+explain = [
+    "shap",
 ]
 
 [tool.pyright]

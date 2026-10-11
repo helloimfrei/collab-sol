@@ -23,6 +23,11 @@ Conditional-severity modeling additionally requires a severity target on rows
 where `incident == 1`. Encoding, scaling, and imputation must still be fit inside
 each temporal training fold to avoid leakage.
 
+`incident_count`, `total_killed`, `total_injured`, and derived severity targets
+are outcomes, not risk features. In particular, `incident` is calculated from
+`incident_count > 0`, so including `incident_count` would directly leak the
+binary target.
+
 Example setup:
 
 ```python
@@ -45,11 +50,16 @@ needed.
 
 - `splitting.py` creates expanding temporal fold indices and the final holdout.
 - `tuning.py` runs one Optuna parameter trial across every temporal fold.
-- `evaluate.py` contains shared evaluation metrics.
+- `evaluate.py` selects a validation threshold and writes shared holdout metrics,
+  predictions, and a precision-recall curve. SHAP helpers support fitted tree
+  and PyTorch neural models as an optional extra.
 - `models/base.py` defines the interface required by the tuner.
 - `models/xgboost.py` implements the current XGBoost model adapter.
 - `preprocessing.py` owns fold-fitted model-input transformations.
 - `train.py` will own final refitting and holdout evaluation.
+
+See `notebooks/modeling_demo.ipynb` for a small end-to-end Colab example using
+the final dataset, temporal tuning, final refitting, and holdout reporting.
 
 Dataset-construction work remains available on the local `final-dataset` and
 `dataset-pipeline` branches, but it is intentionally outside this package.
