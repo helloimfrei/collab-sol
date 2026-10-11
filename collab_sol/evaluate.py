@@ -10,25 +10,20 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import (
     average_precision_score,
-    confusion_matrix,
+    brier_score_loss,
+    log_loss,
     precision_recall_curve,
 )
 
 
 @dataclass(frozen=True)
 class RiskMetrics:
-    """Threshold-free and threshold-dependent binary risk metrics."""
+    """Metrics for continuous binary crash-risk scores."""
 
-    threshold: float
     prevalence: float
     average_precision: float
-    precision: float
-    recall: float
-    f1: float
-    true_negatives: int
-    false_positives: int
-    false_negatives: int
-    true_positives: int
+    brier_score: float
+    log_loss: float
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -58,7 +53,7 @@ def positive_class_probabilities(probabilities) -> np.ndarray:
 
 
 def binary_average_precision(y_true, probabilities: np.ndarray) -> float:
-    """Score rare-event predictions using the positive-class probability."""
+    """Score rare-event ranking using the positive-class risk score."""
 
     labels = _binary_targets(y_true)
     positive = positive_class_probabilities(probabilities)
@@ -67,59 +62,22 @@ def binary_average_precision(y_true, probabilities: np.ndarray) -> float:
     return float(average_precision_score(labels, positive))
 
 
-def select_f1_threshold(y_true, probabilities: np.ndarray) -> float:
-    """Choose the F1-maximizing threshold using validation predictions only."""
-
-    labels = _binary_targets(y_true)
-    positive = positive_class_probabilities(probabilities)
-    if len(labels) != len(positive):
-        raise ValueError("Targets and probabilities must have the same length.")
-    if len(np.unique(labels)) != 2:
-        raise ValueError("Threshold selection requires both target classes.")
-
-    precision, recall, thresholds = precision_recall_curve(labels, positive)
-    denominator = precision[:-1] + recall[:-1]
-    f1 = np.divide(
-        2 * precision[:-1] * recall[:-1],
-        denominator,
-        out=np.zeros_like(denominator),
-        where=denominator != 0,
-    )
-    return float(thresholds[int(np.argmax(f1))])
-
-
 def evaluate_binary_risk(
     y_true,
     probabilities: np.ndarray,
-    *,
-    threshold: float,
 ) -> RiskMetrics:
-    """Evaluate positive-class probabilities at a chosen threshold."""
-
-    if not 0 <= threshold <= 1:
-        raise ValueError("threshold must be between 0 and 1.")
+    """Evaluate continuous positive-class risk scores."""
 
     labels = _binary_targets(y_true)
     positive = positive_class_probabilities(probabilities)
     if len(labels) != len(positive):
         raise ValueError("Targets and probabilities must have the same length.")
 
-    predictions = (positive >= threshold).astype(int)
-    tn, fp, fn, tp = confusion_matrix(labels, predictions, labels=[0, 1]).ravel()
-    precision = tp / (tp + fp) if tp + fp else 0.0
-    recall = tp / (tp + fn) if tp + fn else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return RiskMetrics(
-        threshold=float(threshold),
         prevalence=float(labels.mean()),
         average_precision=float(average_precision_score(labels, positive)),
-        precision=float(precision),
-        recall=float(recall),
-        f1=float(f1),
-        true_negatives=int(tn),
-        false_positives=int(fp),
-        false_negatives=int(fn),
-        true_positives=int(tp),
+        brier_score=float(brier_score_loss(labels, positive)),
+        log_loss=float(log_loss(labels, positive, labels=[0, 1])),
     )
 
 
@@ -128,11 +86,10 @@ def generate_risk_report(
     X,
     y_true,
     *,
-    threshold: float,
     output_dir: str | Path,
     row_ids=None,
 ) -> RiskMetrics:
-    """Save metrics, holdout predictions, and a precision-recall curve."""
+    """Save metrics, holdout risk scores, and a precision-recall curve."""
 
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -140,8 +97,7 @@ def generate_risk_report(
     labels = _binary_targets(y_true)
     probabilities = np.asarray(model.predict_proba(X))
     positive = positive_class_probabilities(probabilities)
-    metrics = evaluate_binary_risk(labels, probabilities, threshold=threshold)
-    predictions = (positive >= threshold).astype(int)
+    metrics = evaluate_binary_risk(labels, probabilities)
 
     if row_ids is None:
         identifiers = np.arange(len(labels))
@@ -155,10 +111,10 @@ def generate_risk_report(
         writer.writerow(["metric", "value"])
         writer.writerows(metrics.to_dict().items())
 
-    with (output / "predictions.csv").open("w", newline="") as file:
+    with (output / "risk_scores.csv").open("w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["row_id", "actual", "probability", "predicted"])
-        writer.writerows(zip(identifiers, labels, positive, predictions))
+        writer.writerow(["row_id", "actual", "risk_score"])
+        writer.writerows(zip(identifiers, labels, positive))
 
     _save_precision_recall_curve(labels, positive, output / "precision_recall_curve.png")
     return metrics

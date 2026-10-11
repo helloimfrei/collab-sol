@@ -48,9 +48,9 @@ needed.
 
 - `splitting.py` creates expanding temporal fold indices and the final holdout.
 - `tuning.py` runs one Optuna parameter trial across every temporal fold.
-- `evaluate.py` selects a validation threshold and writes shared holdout metrics,
-  predictions, and a precision-recall curve. SHAP helpers support fitted tree
-  and PyTorch neural models as an optional extra.
+- `evaluate.py` writes continuous holdout risk scores, ranking and probability
+  metrics, and a precision-recall curve. SHAP helpers support fitted tree and
+  PyTorch neural models as an optional extra.
 - `models/base.py` defines the interface required by the tuner.
 - `models/xgboost.py` implements the current XGBoost model adapter.
 - `preprocessing.py` owns fold-fitted model-input transformations.
