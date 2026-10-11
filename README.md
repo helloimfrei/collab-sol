@@ -10,6 +10,42 @@ The planned model panel is logistic regression, XGBoost, LightGBM, an MLP, and
 an FT-Transformer. Each model implements the `BaseModel` interface so the same
 temporal cross-validation and Bayesian tuning pipeline can train and score it.
 
+## Final dataset
+
+Build the public, open, at-grade, lower-48 crossing-year master dataset from the
+six teammate-produced annual files:
+
+```bash
+uv run python -m collab_sol.data --data-root ../data
+```
+
+The builder keeps the latest Form 71 revision per crossing, derives risk and
+severity directly from Form 57, attaches five-year GridMET features, and writes
+`data/processed/crossing_year_master.parquet`. Values remain unencoded so each
+model's preprocessing can be fit inside its temporal training folds.
+
+The assembly order is:
+
+1. Normalize the six annual schemas where source types drift.
+2. Keep the latest pre-year Form 71 revision for each crossing.
+3. Keep public, open, at-grade crossings in the lower 48 states.
+4. Aggregate Form 57 incidents by crossing and calendar year.
+5. Label incidents as property-damage-only, injury, or fatal.
+6. Add the prior five years of GridMET weather and its mapping-quality flags.
+7. Stream every annual cohort into one compressed Parquet file.
+
+## Package map
+
+- `data.py` assembles the unencoded master dataset and its targets.
+- `weather.py` builds and joins five-year GridMET summaries.
+- `splitting.py` creates expanding temporal fold indices and the final holdout.
+- `tuning.py` runs one Optuna parameter trial across every temporal fold.
+- `evaluate.py` contains shared evaluation metrics.
+- `models/base.py` defines the interface required by the tuner.
+- `models/xgboost.py` implements the current XGBoost model adapter.
+- `preprocessing.py` and `train.py` are placeholders for the model-input and
+  final-refit pipelines; they do not yet contain implementations.
+
 ## GridMET weather processing
 
 Build one five-year weather lookup for all crossing snapshots, then merge it
