@@ -1,20 +1,15 @@
 [project]
 name = "collab-sol"
 version = "0.1.0"
-description = "Grade-crossing risk and severity modeling"
+description = "Utilities for reproducible grade-crossing model comparisons"
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.11,<3.14"
 dependencies = [
-      "pandas==2.2.3",
       "numpy",
-      "pyarrow",
-      "scikit-learn",
-      "lightgbm",
-      "xgboost",
-      "torch",
-      "optuna",
       "matplotlib",
-      "rtdl-revisiting-models==0.0.2",
+      "optuna",
+      "pandas==2.2.3",
+      "scikit-learn",
   ]
 
 [build-system]
@@ -36,7 +31,7 @@ explain = [
 ]
 
 [tool.pyright]
-pythonVersion = "3.13"
+pythonVersion = "3.11"
 typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]

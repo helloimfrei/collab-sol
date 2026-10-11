@@ -183,13 +183,16 @@ def save_neural_shap_summary(
 
     try:
         import matplotlib.pyplot as plt
-        import torch
     except ImportError as error:
         raise ImportError("Install SHAP with: pip install 'collab-sol[explain]'") from error
     try:
         shap = import_module("shap")
     except ImportError as error:
         raise ImportError("Install SHAP with: pip install 'collab-sol[explain]'") from error
+    try:
+        torch = import_module("torch")
+    except ImportError as error:
+        raise ImportError("Install PyTorch to explain a neural model.") from error
 
     background_tensor = torch.as_tensor(background, dtype=torch.float32)
     values = _sample_explanation_rows(X, max_rows=max_rows, random_state=random_state)
