@@ -1,8 +1,11 @@
 # collab-sol
 
-Small shared utilities for comparing grade-crossing models. The package does
-not own data preparation or model implementations. Teammates can write models
-in notebooks and use the same temporal split, Optuna search, and risk report.
+Shared utilities for making our grade-crossing model comparisons consistent.
+Models and data preparation stay in team notebooks; this package provides:
+
+- expanding temporal cross-validation with a final untouched year;
+- Optuna hyperparameter tuning; and
+- continuous risk-score evaluation and reporting.
 
 ## Install in Colab
 
@@ -10,35 +13,41 @@ in notebooks and use the same temporal split, Optuna search, and risk report.
 %pip install -q "collab-sol @ git+https://github.com/helloimfrei/collab-sol.git@main"
 ```
 
-## Model contract
+## Use it with any model
 
-No base class or package adapter is required. Provide two short functions:
+No inheritance or package-specific model class is required. Define one
+function containing the parameters Optuna should search and another that
+builds the model:
 
 ```python
 from sklearn.linear_model import LogisticRegression
 
 def suggest_params(trial):
-    return {"C": trial.suggest_float("C", 1e-3, 100, log=True)}
+    return {
+        "C": trial.suggest_float("C", 1e-3, 100, log=True),
+    }
 
 def build_model(params, random_state):
     return LogisticRegression(
         **params,
-        class_weight="balanced",
+        class_weight="balanced",  # Fixed, not tuned.
         max_iter=300,
         random_state=random_state,
     )
 ```
 
-`build_model` may return any object with ordinary `fit(X, y)` and
-`predict_proba(X)` methods. The latter must return the usual two columns for a
-binary classifier. If a model needs each fold's validation data for early
-stopping or a custom neural training loop, pass an optional `fit_model`
-function to the tuner.
+The returned model only needs normal `fit(X, y)` and `predict_proba(X)`
+methods. For binary risk, `predict_proba` must return the usual two columns:
+the probabilities of classes 0 and 1.
 
-## Typical use
+## Split and tune
 
 ```python
+from sklearn.impute import SimpleImputer
 from collab_sol import make_expanding_temporal_split, tune_model
+
+def make_preprocessor():
+    return SimpleImputer(strategy="median", add_indicator=True)
 
 split = make_expanding_temporal_split(frame, year_column="asof_year")
 
@@ -51,27 +60,44 @@ study = tune_model(
     preprocessor_factory=make_preprocessor,
     n_trials=20,
 )
+
+print(study.best_value)
+print(study.best_params)
 ```
 
-For the 2019–2024 panel, this tunes on expanding validation years 2020–2023
-and never exposes the 2024 holdout to Optuna. Preprocessing is recreated and
-fit inside each fold. After tuning, refit the selected model on 2019–2023 and
-evaluate 2024 once.
+By default, every trial is scored using average precision. The tuner fits the
+same proposed parameter set on every temporal fold and maximizes its mean
+validation score. A different higher-is-better function can be passed through
+`scorer=`.
 
-`tune_model` returns a normal Optuna study. It is in memory unless `storage=`
-is supplied; saving `study.trials_dataframe()` to CSV is the simplest Colab
-provenance. The risk report writes average precision, prevalence, per-row
-continuous risk scores, and a precision-recall curve.
+For our 2019–2024 dataset, the validation years are 2020–2023. The tuner never
+receives 2024. After selecting the parameters, refit on all 2019–2023 rows and
+evaluate 2024 once. Preprocessing is independently fit inside every fold.
 
-## Files
+Models that require validation data while fitting, such as XGBoost early
+stopping or a custom neural-network loop, can supply the optional `fit_model`
+callback. See the tuner docstring for its arguments.
 
-- `splitting.py`: expanding temporal fold and untouched holdout indices.
-- `tuning.py`: one shared Optuna loop for any compatible model.
-- `evaluate.py`: continuous binary-risk metrics, reports, and optional SHAP.
-- `notebooks/utils_demo.ipynb`: minimal Colab example using logistic
-  regression; replace only its model factory and search-space functions.
+## Outputs and provenance
 
-The final dataset must already contain one row per crossing-year, features,
-`asof_year`, and `incident`. Never include outcome columns such as
+`tune_model` returns an ordinary Optuna study. It is in memory unless
+`storage=` is provided. In Colab, the simplest record of the search is:
+
+```python
+study.trials_dataframe().to_csv("optuna_trials.csv", index=False)
+```
+
+`generate_risk_report` saves average precision, prevalence, a
+precision-recall curve, and one continuous risk score per crossing. It does
+not convert those scores into yes/no predictions.
+
+## Data contract
+
+The input must already contain one row per crossing-year, `asof_year`, the
+binary `incident` target, and the chosen features. Never use outcomes such as
 `incident_count`, `total_killed`, `total_injured`, or derived severity targets
 as risk features.
+
+See [`notebooks/utils_demo.ipynb`](notebooks/utils_demo.ipynb) for the complete
+Colab workflow using logistic regression. To test another model, replace only
+`suggest_params` and `build_model`.
