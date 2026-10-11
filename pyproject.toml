@@ -1,25 +1,21 @@
 [project]
 name = "collab-sol"
 version = "0.1.0"
-description = "Add your description here"
+description = "Grade-crossing risk and severity modeling"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
       "pandas==2.2.3",
       "numpy",
       "pyarrow",
-      "duckdb",
       "scikit-learn",
       "lightgbm",
       "xgboost",
       "torch",
       "optuna",
-      "rtdl-revisiting-models==0.0.2",
       "matplotlib",
+      "rtdl-revisiting-models==0.0.2",
   ]
-
-[project.scripts]
-collab-sol = "collab_sol:main"
 
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
@@ -28,3 +24,20 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name='collab_sol'
 module-root=''
+
+[project.optional-dependencies]
+dev = [
+    "marimo",
+    "pytest",
+    "pyright",
+]
+explain = [
+    "shap",
+]
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

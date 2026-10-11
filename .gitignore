@@ -1,5 +1,7 @@
 # Python-generated files
 __pycache__/
+.pytest_cache/
+__marimo__/
 *.py[oc]
 build/
 dist/
@@ -10,3 +12,8 @@ wheels/
 .venv
 .python_version
 
+# Local data and experiment artifacts
+data/
+runs/
+*.nc
+*.gpkg

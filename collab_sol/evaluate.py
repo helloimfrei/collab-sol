@@ -1,0 +1,272 @@
+"""Evaluation helpers shared by binary crash-risk models."""
+
+from __future__ import annotations
+
+import csv
+from dataclasses import asdict, dataclass
+from importlib import import_module
+from pathlib import Path
+
+import numpy as np
+from sklearn.metrics import (
+    average_precision_score,
+    confusion_matrix,
+    precision_recall_curve,
+)
+
+
+@dataclass(frozen=True)
+class RiskMetrics:
+    """Threshold-free and threshold-dependent binary risk metrics."""
+
+    threshold: float
+    prevalence: float
+    average_precision: float
+    precision: float
+    recall: float
+    f1: float
+    true_negatives: int
+    false_positives: int
+    false_negatives: int
+    true_positives: int
+
+    def to_dict(self) -> dict[str, float | int]:
+        return asdict(self)
+
+
+def _binary_targets(y_true) -> np.ndarray:
+    labels = np.asarray(y_true)
+    if labels.ndim != 1:
+        raise ValueError("Binary targets must be one-dimensional.")
+    if labels.size == 0:
+        raise ValueError("Binary targets cannot be empty.")
+    if not set(np.unique(labels)).issubset({0, 1}):
+        raise ValueError("Binary targets must contain only 0 and 1.")
+    return labels.astype(int)
+
+
+def positive_class_probabilities(probabilities) -> np.ndarray:
+    """Return positive-class probabilities from a binary model output."""
+
+    values = np.asarray(probabilities, dtype=float)
+    if values.ndim != 2 or values.shape[1] != 2:
+        raise ValueError("Binary probabilities must have shape (rows, 2).")
+    positive = values[:, 1]
+    if not np.isfinite(positive).all() or ((positive < 0) | (positive > 1)).any():
+        raise ValueError("Probabilities must be finite values between 0 and 1.")
+    return positive
+
+
+def binary_average_precision(y_true, probabilities: np.ndarray) -> float:
+    """Score rare-event predictions using the positive-class probability."""
+
+    labels = _binary_targets(y_true)
+    positive = positive_class_probabilities(probabilities)
+    if len(labels) != len(positive):
+        raise ValueError("Targets and probabilities must have the same length.")
+    return float(average_precision_score(labels, positive))
+
+
+def select_f1_threshold(y_true, probabilities: np.ndarray) -> float:
+    """Choose the F1-maximizing threshold using validation predictions only."""
+
+    labels = _binary_targets(y_true)
+    positive = positive_class_probabilities(probabilities)
+    if len(labels) != len(positive):
+        raise ValueError("Targets and probabilities must have the same length.")
+    if len(np.unique(labels)) != 2:
+        raise ValueError("Threshold selection requires both target classes.")
+
+    precision, recall, thresholds = precision_recall_curve(labels, positive)
+    denominator = precision[:-1] + recall[:-1]
+    f1 = np.divide(
+        2 * precision[:-1] * recall[:-1],
+        denominator,
+        out=np.zeros_like(denominator),
+        where=denominator != 0,
+    )
+    return float(thresholds[int(np.argmax(f1))])
+
+
+def evaluate_binary_risk(
+    y_true,
+    probabilities: np.ndarray,
+    *,
+    threshold: float,
+) -> RiskMetrics:
+    """Evaluate positive-class probabilities at a chosen threshold."""
+
+    if not 0 <= threshold <= 1:
+        raise ValueError("threshold must be between 0 and 1.")
+
+    labels = _binary_targets(y_true)
+    positive = positive_class_probabilities(probabilities)
+    if len(labels) != len(positive):
+        raise ValueError("Targets and probabilities must have the same length.")
+
+    predictions = (positive >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(labels, predictions, labels=[0, 1]).ravel()
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return RiskMetrics(
+        threshold=float(threshold),
+        prevalence=float(labels.mean()),
+        average_precision=float(average_precision_score(labels, positive)),
+        precision=float(precision),
+        recall=float(recall),
+        f1=float(f1),
+        true_negatives=int(tn),
+        false_positives=int(fp),
+        false_negatives=int(fn),
+        true_positives=int(tp),
+    )
+
+
+def generate_risk_report(
+    model,
+    X,
+    y_true,
+    *,
+    threshold: float,
+    output_dir: str | Path,
+    row_ids=None,
+) -> RiskMetrics:
+    """Save metrics, holdout predictions, and a precision-recall curve."""
+
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+
+    labels = _binary_targets(y_true)
+    probabilities = np.asarray(model.predict_proba(X))
+    positive = positive_class_probabilities(probabilities)
+    metrics = evaluate_binary_risk(labels, probabilities, threshold=threshold)
+    predictions = (positive >= threshold).astype(int)
+
+    if row_ids is None:
+        identifiers = np.arange(len(labels))
+    else:
+        identifiers = np.asarray(row_ids)
+        if identifiers.ndim != 1 or len(identifiers) != len(labels):
+            raise ValueError("row_ids must be one-dimensional and match y_true.")
+
+    with (output / "metrics.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["metric", "value"])
+        writer.writerows(metrics.to_dict().items())
+
+    with (output / "predictions.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["row_id", "actual", "probability", "predicted"])
+        writer.writerows(zip(identifiers, labels, positive, predictions))
+
+    _save_precision_recall_curve(labels, positive, output / "precision_recall_curve.png")
+    return metrics
+
+
+def _save_precision_recall_curve(
+    labels: np.ndarray,
+    positive: np.ndarray,
+    output_path: Path,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    precision, recall, _ = precision_recall_curve(labels, positive)
+    figure, axis = plt.subplots()
+    axis.plot(recall, precision)
+    axis.axhline(labels.mean(), color="gray", linestyle="--", label="prevalence")
+    axis.set(xlabel="Recall", ylabel="Precision", title="Crash-risk precision-recall curve")
+    axis.legend()
+    axis.grid(alpha=0.3)
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=200)
+    plt.close(figure)
+
+
+def save_tree_shap_summary(
+    native_model,
+    X,
+    output_path: str | Path,
+    *,
+    feature_names: list[str] | None = None,
+    max_rows: int = 5_000,
+    random_state: int = 42,
+) -> None:
+    """Save an optional SHAP summary for a fitted XGBoost or LightGBM model."""
+
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as error:
+        raise ImportError("Install SHAP with: pip install 'collab-sol[explain]'") from error
+    try:
+        shap = import_module("shap")
+    except ImportError as error:
+        raise ImportError("Install SHAP with: pip install 'collab-sol[explain]'") from error
+
+    values = _sample_explanation_rows(X, max_rows=max_rows, random_state=random_state)
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    explainer = shap.TreeExplainer(native_model)
+    shap_values = explainer.shap_values(values)
+    shap.summary_plot(
+        shap_values,
+        values,
+        feature_names=feature_names,
+        show=False,
+    )
+    plt.tight_layout()
+    plt.savefig(destination, dpi=200, bbox_inches="tight")
+    plt.close()
+
+
+def save_neural_shap_summary(
+    native_model,
+    background,
+    X,
+    output_path: str | Path,
+    *,
+    feature_names: list[str] | None = None,
+    max_rows: int = 1_000,
+    random_state: int = 42,
+) -> None:
+    """Save a SHAP summary for a PyTorch model with one tabular tensor input."""
+
+    try:
+        import matplotlib.pyplot as plt
+        import torch
+    except ImportError as error:
+        raise ImportError("Install SHAP with: pip install 'collab-sol[explain]'") from error
+    try:
+        shap = import_module("shap")
+    except ImportError as error:
+        raise ImportError("Install SHAP with: pip install 'collab-sol[explain]'") from error
+
+    background_tensor = torch.as_tensor(background, dtype=torch.float32)
+    values = _sample_explanation_rows(X, max_rows=max_rows, random_state=random_state)
+    values_tensor = torch.as_tensor(values, dtype=torch.float32)
+
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    explainer = shap.GradientExplainer(native_model, background_tensor)
+    shap_values = explainer.shap_values(values_tensor)
+    shap.summary_plot(
+        shap_values,
+        values,
+        feature_names=feature_names,
+        show=False,
+    )
+    plt.tight_layout()
+    plt.savefig(destination, dpi=200, bbox_inches="tight")
+    plt.close()
+
+
+def _sample_explanation_rows(X, *, max_rows: int, random_state: int) -> np.ndarray:
+    values = np.asarray(X)
+    if values.ndim != 2:
+        raise ValueError("X must be a two-dimensional feature matrix.")
+    if max_rows < 1:
+        raise ValueError("max_rows must be at least 1.")
+    if len(values) > max_rows:
+        rng = np.random.default_rng(random_state)
+        values = values[rng.choice(len(values), size=max_rows, replace=False)]
+    return values
