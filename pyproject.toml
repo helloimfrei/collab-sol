@@ -8,20 +8,13 @@ dependencies = [
       "pandas==2.2.3",
       "numpy",
       "pyarrow",
-      "xarray",
-      "netcdf4",
-      "duckdb",
       "scikit-learn",
       "lightgbm",
       "xgboost",
       "torch",
       "optuna",
       "rtdl-revisiting-models==0.0.2",
-      "matplotlib",
   ]
-
-[project.scripts]
-collab-sol = "collab_sol:main"
 
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]
