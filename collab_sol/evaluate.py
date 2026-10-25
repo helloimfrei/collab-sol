@@ -13,7 +13,7 @@ from sklearn.metrics import (
     precision_recall_curve,
 )
 
-DEFAULT_INSPECTION_BUDGETS = (10, 100, 500, 1_000)
+DEFAULT_INSPECTION_BUDGETS = (10, 50, 100, 500, 1_000, 5_000, 10_000)
 
 
 @dataclass(frozen=True)
