@@ -145,7 +145,6 @@ def _inspection_budget_rows(
         rows.append(
             {
                 "inspection_budget_crossings": budget,
-                "crossings_reviewed": reviewed,
                 "incident_crossings_captured": captured,
                 "precision": precision,
                 "recall": recall,

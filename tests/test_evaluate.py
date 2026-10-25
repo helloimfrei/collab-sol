@@ -66,7 +66,6 @@ def test_report_writes_metrics_scores_budgets_and_curve(tmp_path) -> None:
         500,
         1_000,
     ]
-    assert int(budget_rows[0]["crossings_reviewed"]) == 4
     assert int(budget_rows[0]["incident_crossings_captured"]) == 2
     assert float(budget_rows[0]["precision"]) == pytest.approx(0.5)
     assert float(budget_rows[0]["recall"]) == pytest.approx(1.0)
@@ -94,5 +93,5 @@ def test_inspection_budgets_use_absolute_top_counts() -> None:
 
     rows = _inspection_budget_rows(labels, scores)
 
-    assert [row["crossings_reviewed"] for row in rows] == [10, 100, 500, 1_000]
+    assert all("crossings_reviewed" not in row for row in rows)
     assert [row["incident_crossings_captured"] for row in rows] == [1, 2, 3, 4]
