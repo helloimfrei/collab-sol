@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from collab_sol.evaluate import (
+    _inspection_budget_rows,
     evaluate_binary_risk,
     generate_risk_report,
 )
@@ -59,20 +60,18 @@ def test_report_writes_metrics_scores_budgets_and_curve(tmp_path) -> None:
 
     with (tmp_path / "inspection_budget.csv").open() as file:
         budget_rows = list(csv.DictReader(file))
-    assert [float(row["inspection_budget_fraction"]) for row in budget_rows] == [
-        0.001,
-        0.005,
-        0.01,
-        0.02,
-        0.05,
-        0.10,
+    assert [int(row["inspection_budget_crossings"]) for row in budget_rows] == [
+        10,
+        100,
+        500,
+        1_000,
     ]
-    assert int(budget_rows[0]["crossings_reviewed"]) == 1
-    assert int(budget_rows[0]["incident_crossings_captured"]) == 1
-    assert float(budget_rows[0]["precision"]) == pytest.approx(1.0)
-    assert float(budget_rows[0]["recall"]) == pytest.approx(0.5)
-    assert float(budget_rows[0]["lift_over_random"]) == pytest.approx(2.0)
-    assert float(budget_rows[0]["risk_score_cutoff"]) == pytest.approx(0.9)
+    assert int(budget_rows[0]["crossings_reviewed"]) == 4
+    assert int(budget_rows[0]["incident_crossings_captured"]) == 2
+    assert float(budget_rows[0]["precision"]) == pytest.approx(0.5)
+    assert float(budget_rows[0]["recall"]) == pytest.approx(1.0)
+    assert float(budget_rows[0]["lift_over_random"]) == pytest.approx(1.0)
+    assert float(budget_rows[0]["risk_score_cutoff"]) == pytest.approx(0.1)
 
 
 def test_report_rejects_mismatched_row_ids(tmp_path) -> None:
@@ -86,3 +85,14 @@ def test_report_rejects_mismatched_row_ids(tmp_path) -> None:
             output_dir=tmp_path,
             row_ids=["only-one"],
         )
+
+
+def test_inspection_budgets_use_absolute_top_counts() -> None:
+    labels = np.zeros(1_000, dtype=int)
+    labels[[0, 99, 499, 999]] = 1
+    scores = np.linspace(1.0, 0.001, 1_000)
+
+    rows = _inspection_budget_rows(labels, scores)
+
+    assert [row["crossings_reviewed"] for row in rows] == [10, 100, 500, 1_000]
+    assert [row["incident_crossings_captured"] for row in rows] == [1, 2, 3, 4]

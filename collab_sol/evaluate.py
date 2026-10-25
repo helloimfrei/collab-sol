@@ -13,7 +13,7 @@ from sklearn.metrics import (
     precision_recall_curve,
 )
 
-DEFAULT_INSPECTION_BUDGETS = (0.001, 0.005, 0.01, 0.02, 0.05, 0.10)
+DEFAULT_INSPECTION_BUDGETS = (10, 100, 500, 1_000)
 
 
 @dataclass(frozen=True)
@@ -126,7 +126,7 @@ def _inspection_budget_rows(
     labels: np.ndarray,
     positive: np.ndarray,
 ) -> list[dict[str, float | int]]:
-    """Calculate top-ranked performance at the default inspection budgets."""
+    """Calculate performance for fixed counts of top-ranked crossings."""
 
     order = np.argsort(-positive, kind="stable")
     ranked_labels = labels[order]
@@ -137,14 +137,14 @@ def _inspection_budget_rows(
 
     rows = []
     for budget in DEFAULT_INSPECTION_BUDGETS:
-        reviewed = max(1, int(np.ceil(len(labels) * budget)))
+        reviewed = min(budget, len(labels))
         captured = int(cumulative_incidents[reviewed - 1])
         precision = captured / reviewed
         recall = captured / total_incidents if total_incidents else 0.0
         lift = precision / prevalence if prevalence else 0.0
         rows.append(
             {
-                "inspection_budget_fraction": budget,
+                "inspection_budget_crossings": budget,
                 "crossings_reviewed": reviewed,
                 "incident_crossings_captured": captured,
                 "precision": precision,
