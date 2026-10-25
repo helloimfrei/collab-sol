@@ -115,3 +115,14 @@ uv run --extra dev --extra gpu marimo edit notebooks/mlp_training.py
 
 The notebook uses CUDA mixed precision when available and otherwise falls back
 to CPU. Confirm `torch.cuda.is_available()` is `True` before starting a GPU run.
+
+For a non-interactive run without Marimo:
+
+```bash
+uv sync --extra gpu
+uv run --extra gpu python scripts/train_mlp.py --require-cuda
+```
+
+The script accepts `--trials`, `--max-epochs`, `--patience`, `--dataset`, and
+`--output-dir`. It defaults to 2 trials, 50 maximum epochs, and 5 patience
+epochs.
