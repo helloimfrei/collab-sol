@@ -110,6 +110,8 @@ Colab workflow using logistic regression. To test another model, replace only
 [`notebooks/mlp_training.py`](notebooks/mlp_training.py) is a Marimo notebook
 for tuning the PyTorch MLP over the temporal folds and evaluating 2024 once.
 It expects the final Parquet at `../data/final/final_dataset.parquet`.
+The shared estimator is available as
+`from collab_sol.models import TorchMLPClassifier`.
 
 ```bash
 uv sync --extra dev --extra gpu
