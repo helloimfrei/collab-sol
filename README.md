@@ -101,3 +101,17 @@ as risk features.
 See [`notebooks/utils_demo.ipynb`](notebooks/utils_demo.ipynb) for the complete
 Colab workflow using logistic regression. To test another model, replace only
 `suggest_params` and `build_model`.
+
+## Train the GPU MLP locally
+
+[`notebooks/mlp_training.py`](notebooks/mlp_training.py) is a Marimo notebook
+for tuning the PyTorch MLP over the temporal folds and evaluating 2024 once.
+It expects the final Parquet at `../data/final/final_dataset.parquet`.
+
+```bash
+uv sync --extra dev --extra gpu
+uv run --extra dev --extra gpu marimo edit notebooks/mlp_training.py
+```
+
+The notebook uses CUDA mixed precision when available and otherwise falls back
+to CPU. Confirm `torch.cuda.is_available()` is `True` before starting a GPU run.

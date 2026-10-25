@@ -9,6 +9,7 @@ dependencies = [
       "matplotlib",
       "optuna",
       "pandas==2.2.3",
+      "pyarrow",
       "scikit-learn",
   ]
 
@@ -28,6 +29,9 @@ dev = [
 ]
 explain = [
     "shap",
+]
+gpu = [
+    "torch",
 ]
 
 [tool.pyright]
