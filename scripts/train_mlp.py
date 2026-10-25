@@ -139,7 +139,7 @@ class TorchMLPClassifier:
         batch_size,
         max_epochs=50,
         patience=5,
-        tolerance=1e-4,
+        tolerance=5e-4,
         random_state=42,
     ):
         self.hidden_width = hidden_width
@@ -309,14 +309,12 @@ def suggest_params(trial):
         "weight_decay": trial.suggest_float(
             "weight_decay", 1e-7, 1e-3, log=True
         ),
-        "batch_size": trial.suggest_categorical(
-            "batch_size", [4096, 8192, 16384]
-        ),
     }
 
 def build_model(params, random_state):
     return TorchMLPClassifier(
         random_state=random_state,
+        batch_size=16384,
         max_epochs=args.max_epochs,
         patience=args.patience,
         **params.copy(),
@@ -373,6 +371,8 @@ run_metadata = {
     "n_trials": args.trials,
     "max_epochs": args.max_epochs,
     "patience": args.patience,
+    "batch_size": model.batch_size,
+    "stopping_tolerance": model.tolerance,
 }
 (RUN_DIR / "run.json").write_text(json.dumps(run_metadata, indent=2))
 
