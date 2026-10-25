@@ -88,8 +88,11 @@ study.trials_dataframe().to_csv("optuna_trials.csv", index=False)
 ```
 
 `generate_risk_report` saves average precision, prevalence, a
-precision-recall curve, and one continuous risk score per crossing. It does
-not convert those scores into yes/no predictions.
+precision-recall curve, one continuous risk score per crossing, and an
+`inspection_budget.csv` table for the top 0.1%, 0.5%, 1%, 2%, 5%, and 10% of
+ranked crossings. The budget table reports crossings reviewed, incident
+crossings captured, precision, recall, lift over prevalence, and the score
+cutoff. The report does not convert scores into yes/no predictions.
 
 ## Data contract
 

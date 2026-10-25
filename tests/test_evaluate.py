@@ -32,7 +32,7 @@ def test_binary_risk_metrics_evaluate_continuous_scores() -> None:
     assert metrics.prevalence == pytest.approx(0.5)
 
 
-def test_report_writes_metrics_risk_scores_and_curve(tmp_path) -> None:
+def test_report_writes_metrics_scores_budgets_and_curve(tmp_path) -> None:
     labels = np.array([0, 0, 1, 1])
     probabilities = np.array(
         [[0.9, 0.1], [0.6, 0.4], [0.4, 0.6], [0.1, 0.9]]
@@ -50,11 +50,29 @@ def test_report_writes_metrics_risk_scores_and_curve(tmp_path) -> None:
     assert metrics.average_precision == pytest.approx(1.0)
     assert (tmp_path / "metrics.csv").exists()
     assert (tmp_path / "risk_scores.csv").exists()
+    assert (tmp_path / "inspection_budget.csv").exists()
     assert (tmp_path / "precision_recall_curve.png").exists()
     with (tmp_path / "risk_scores.csv").open() as file:
         rows = list(csv.DictReader(file))
     assert rows[0]["row_id"] == "A"
     assert float(rows[-1]["risk_score"]) == pytest.approx(0.9)
+
+    with (tmp_path / "inspection_budget.csv").open() as file:
+        budget_rows = list(csv.DictReader(file))
+    assert [float(row["inspection_budget_fraction"]) for row in budget_rows] == [
+        0.001,
+        0.005,
+        0.01,
+        0.02,
+        0.05,
+        0.10,
+    ]
+    assert int(budget_rows[0]["crossings_reviewed"]) == 1
+    assert int(budget_rows[0]["incident_crossings_captured"]) == 1
+    assert float(budget_rows[0]["precision"]) == pytest.approx(1.0)
+    assert float(budget_rows[0]["recall"]) == pytest.approx(0.5)
+    assert float(budget_rows[0]["lift_over_random"]) == pytest.approx(2.0)
+    assert float(budget_rows[0]["risk_score_cutoff"]) == pytest.approx(0.9)
 
 
 def test_report_rejects_mismatched_row_ids(tmp_path) -> None:

@@ -13,6 +13,8 @@ from sklearn.metrics import (
     precision_recall_curve,
 )
 
+DEFAULT_INSPECTION_BUDGETS = (0.001, 0.005, 0.01, 0.02, 0.05, 0.10)
+
 
 @dataclass(frozen=True)
 class RiskMetrics:
@@ -83,7 +85,7 @@ def generate_risk_report(
     output_dir: str | Path,
     row_ids=None,
 ) -> RiskMetrics:
-    """Save metrics, holdout risk scores, and a precision-recall curve."""
+    """Save metrics, risk scores, budget performance, and a PR curve."""
 
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -110,8 +112,48 @@ def generate_risk_report(
         writer.writerow(["row_id", "actual", "risk_score"])
         writer.writerows(zip(identifiers, labels, positive))
 
+    budget_rows = _inspection_budget_rows(labels, positive)
+    with (output / "inspection_budget.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(budget_rows[0]))
+        writer.writeheader()
+        writer.writerows(budget_rows)
+
     _save_precision_recall_curve(labels, positive, output / "precision_recall_curve.png")
     return metrics
+
+
+def _inspection_budget_rows(
+    labels: np.ndarray,
+    positive: np.ndarray,
+) -> list[dict[str, float | int]]:
+    """Calculate top-ranked performance at the default inspection budgets."""
+
+    order = np.argsort(-positive, kind="stable")
+    ranked_labels = labels[order]
+    ranked_scores = positive[order]
+    cumulative_incidents = np.cumsum(ranked_labels)
+    total_incidents = int(cumulative_incidents[-1])
+    prevalence = float(labels.mean())
+
+    rows = []
+    for budget in DEFAULT_INSPECTION_BUDGETS:
+        reviewed = max(1, int(np.ceil(len(labels) * budget)))
+        captured = int(cumulative_incidents[reviewed - 1])
+        precision = captured / reviewed
+        recall = captured / total_incidents if total_incidents else 0.0
+        lift = precision / prevalence if prevalence else 0.0
+        rows.append(
+            {
+                "inspection_budget_fraction": budget,
+                "crossings_reviewed": reviewed,
+                "incident_crossings_captured": captured,
+                "precision": precision,
+                "recall": recall,
+                "lift_over_random": lift,
+                "risk_score_cutoff": float(ranked_scores[reviewed - 1]),
+            }
+        )
+    return rows
 
 
 def _save_precision_recall_curve(
