@@ -25,7 +25,7 @@ parser.add_argument("--output-dir", type=Path)
 parser.add_argument("--trials", type=int, default=20)
 parser.add_argument("--max-epochs", type=int, default=50)
 parser.add_argument("--patience", type=int, default=5)
-parser.add_argument("--batch-size", type=int, default=256)
+parser.add_argument("--batch-size", type=int, default=64)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--require-cuda", action="store_true")
 parser.add_argument(

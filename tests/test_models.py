@@ -5,7 +5,7 @@ from importlib.util import find_spec
 import numpy as np
 import pytest
 
-pytest.importorskip("torch")
+torch = pytest.importorskip("torch")
 
 from collab_sol.models import FTTransformerClassifier, TorchMLPClassifier
 
@@ -61,3 +61,23 @@ def test_ft_transformer_fits_and_returns_binary_probabilities() -> None:
     assert probabilities.shape == (64, 2)
     assert np.isfinite(probabilities).all()
     assert probabilities.sum(axis=1) == pytest.approx(np.ones(64))
+
+
+def test_ft_transformer_inference_respects_batch_size() -> None:
+    class RecordingNetwork(torch.nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.batch_sizes: list[int] = []
+
+        def forward(self, continuous, categorical):
+            self.batch_sizes.append(len(continuous))
+            return continuous[:, :1] * 0
+
+    model = FTTransformerClassifier(n_cat_features=0, batch_size=4)
+    network = RecordingNetwork()
+    continuous = torch.zeros((10, 2), dtype=torch.float32)
+
+    logits = model._logits(network, continuous, None)
+
+    assert logits.shape == (10,)
+    assert network.batch_sizes == [4, 4, 2]

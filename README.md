@@ -201,7 +201,7 @@ uv run python scripts/train_likelihood_ft_transformer.py \
   --require-cuda --trials 20
 ```
 
-The default transformer batch size is 256 for an 8 GB GPU. Reduce it to 128
-with `--batch-size 128` if CUDA runs out of memory. Each run receives its own
+The default transformer batch size is 64 for an 8 GB GPU. Reduce it to 32
+with `--batch-size 32` if CUDA runs out of memory. Each run receives its own
 timestamped folder under `runs/` and records the feature exclusions and exact
 command in `run.json`.

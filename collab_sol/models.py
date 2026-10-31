@@ -312,8 +312,8 @@ class FTTransformerClassifier:
         network.eval()
         outputs: list[NDArray[np.float32]] = []
         with torch.no_grad():
-            for start in range(0, len(continuous), self.batch_size * 4):
-                stop = start + self.batch_size * 4
+            for start in range(0, len(continuous), self.batch_size):
+                stop = start + self.batch_size
                 x_continuous = continuous[start:stop].to(self.device)
                 x_categorical = (
                     None
