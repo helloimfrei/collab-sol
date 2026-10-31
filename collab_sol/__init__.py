@@ -1,6 +1,6 @@
 """Small utilities for reproducible grade-crossing model comparisons."""
 
-from collab_sol.classical_models import IsolationForestRiskModel
+from collab_sol.models import IsolationForestRiskModel
 from collab_sol.evaluate import (
     RiskMetrics,
     evaluate_binary_risk,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-from importlib import import_module
 import json
 from pathlib import Path
 import platform
@@ -64,8 +63,6 @@ def main(model_name: str) -> None:
     import numpy as np
     import pandas as pd
     import pyarrow.parquet as pq
-    from sklearn.linear_model import LogisticRegression
-
     from collab_sol import (
         generate_risk_report,
         make_expanding_temporal_split,
@@ -75,7 +72,11 @@ def main(model_name: str) -> None:
         EXCLUDED_RISK_FEATURES,
         split_risk_feature_columns,
     )
-    from collab_sol.classical_models import IsolationForestRiskModel
+    from collab_sol.models import (
+        IsolationForestRiskModel,
+        build_logistic_regression,
+        build_xgboost_classifier,
+    )
     from collab_sol.preprocessing import make_one_hot_preprocessor
 
     numeric_features, categorical_features = split_risk_feature_columns(
@@ -200,28 +201,16 @@ def main(model_name: str) -> None:
 
     def build_model(params: dict[str, Any], random_state: int):
         if model_name == "logistic_regression":
-            return LogisticRegression(
-                **params,
-                solver="saga",
-                max_iter=1_000,
-                tol=1e-3,
+            return build_logistic_regression(
+                params,
                 random_state=random_state,
             )
         if model_name == "xgboost":
-            try:
-                classifier = import_module("xgboost").XGBClassifier
-            except (ImportError, AttributeError) as error:
-                raise ImportError(
-                    "Install model dependencies with `uv sync --extra models`."
-                ) from error
-            return classifier(
-                **params,
-                objective="binary:logistic",
-                eval_metric="aucpr",
-                tree_method="hist",
+            return build_xgboost_classifier(
+                params,
+                random_state=random_state,
                 device=args.xgboost_device,
                 n_jobs=args.n_jobs,
-                random_state=random_state,
             )
         if model_name == "isolation_forest":
             return IsolationForestRiskModel(

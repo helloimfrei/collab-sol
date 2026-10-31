@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from collab_sol.classical_models import IsolationForestRiskModel
+from collab_sol.models.anomaly import IsolationForestRiskModel
 
 
 def test_isolation_forest_returns_anomaly_percentiles() -> None:

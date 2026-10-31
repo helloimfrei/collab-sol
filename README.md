@@ -10,6 +10,15 @@ Team models can use the utilities directly; the package provides:
 It also contains the shared CUDA MLP and FT-Transformer used by the local
 training scripts.
 
+Model code lives under `collab_sol/models/`:
+
+- `classical.py` — logistic-regression and XGBoost factories;
+- `anomaly.py` — the Isolation Forest ranking adapter; and
+- `neural.py` — the PyTorch MLP and FT-Transformer implementations.
+
+The model package keeps neural imports lazy, so a base utilities installation
+does not require PyTorch.
+
 ## Install in Colab
 
 ```python
