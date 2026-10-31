@@ -163,6 +163,14 @@ per model. `model_comparison.csv` collects validation AP, test AP, and test
 prevalence for the entire panel. Use `--models xgboost mlp` to run only selected
 models.
 
+### Logistic-regression details
+
+The logistic baseline uses `SGDClassifier(loss="log_loss")` to fit the same
+linear probabilistic model without SAGA's prohibitive runtime on nearly one
+million rows. Optuna tunes regularization strength, L1/L2 penalty, and optional
+class balancing. Fold-fitted one-hot preprocessing is cached across trials, and
+the runner prints fold AP and elapsed time while it works.
+
 ### MLP details
 
 [`notebooks/mlp_training.py`](notebooks/mlp_training.py) is a Marimo notebook

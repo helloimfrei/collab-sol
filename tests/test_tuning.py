@@ -9,8 +9,11 @@ from collab_sol.tuning import tune_model
 
 
 class IdentityPreprocessor:
+    fit_count = 0
+
     def fit_transform(self, X, y=None):
         del y
+        type(self).fit_count += 1
         return X.to_numpy()
 
     def transform(self, X):
@@ -144,3 +147,28 @@ def test_tuner_runs_enqueued_parameter_sets() -> None:
     )
 
     assert [trial.params["probability"] for trial in study.trials] == [0.2, 0.8]
+
+
+def test_tuner_can_cache_fold_preprocessing() -> None:
+    frame = pd.DataFrame(
+        {
+            "row_id": np.arange(12),
+            "year": [year for year in range(2018, 2024) for _ in range(2)],
+            "target": [0, 1] * 6,
+        }
+    )
+    split = make_expanding_temporal_split(frame, year_column="year")
+    IdentityPreprocessor.fit_count = 0
+
+    tune_model(
+        model_factory=build_recording_model,
+        suggest_params=suggest_probability,
+        X=frame[["row_id"]],
+        y=frame["target"],
+        split=split,
+        preprocessor_factory=IdentityPreprocessor,
+        n_trials=2,
+        cache_preprocessing=True,
+    )
+
+    assert IdentityPreprocessor.fit_count == len(split.folds)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import optuna
 
@@ -25,6 +27,8 @@ def tune_model(
     storage: str | None = None,
     enqueued_trials=None,
     pruner=None,
+    cache_preprocessing: bool = False,
+    verbose: bool = False,
 ) -> optuna.Study:
     """Tune any probabilistic classifier without exposing the holdout.
 
@@ -39,23 +43,47 @@ def tune_model(
     if n_trials < 1:
         raise ValueError("n_trials must be at least 1.")
 
+    transformed_folds = {}
+
     def objective(trial: optuna.Trial) -> float:
         params = suggest_params(trial)
         fold_scores: list[float] = []
 
         for fold_number, fold in enumerate(split.folds):
-            X_train = _take_rows(X, fold.train_indices)
+            fold_start = time.perf_counter()
+            prefix = (
+                f"trial {trial.number + 1}/{n_trials} | "
+                f"fold {fold_number + 1}/{len(split.folds)}"
+            )
+            cache_hit = cache_preprocessing and fold_number in transformed_folds
+            if verbose:
+                data_status = "using cached data" if cache_hit else "preparing data"
+                print(f"{prefix} | {data_status}", flush=True)
             y_train = _take_rows(y, fold.train_indices)
-            X_valid = _take_rows(X, fold.validation_indices)
             y_valid = _take_rows(y, fold.validation_indices)
 
-            if preprocessor_factory is None:
-                transformed_train = X_train
-                transformed_valid = X_valid
+            if cache_hit:
+                transformed_train, transformed_valid = transformed_folds[
+                    fold_number
+                ]
             else:
-                preprocessor = preprocessor_factory()
-                transformed_train = preprocessor.fit_transform(X_train, y_train)
-                transformed_valid = preprocessor.transform(X_valid)
+                X_train = _take_rows(X, fold.train_indices)
+                X_valid = _take_rows(X, fold.validation_indices)
+                if preprocessor_factory is None:
+                    transformed_train = X_train
+                    transformed_valid = X_valid
+                else:
+                    preprocessor = preprocessor_factory()
+                    transformed_train = preprocessor.fit_transform(
+                        X_train,
+                        y_train,
+                    )
+                    transformed_valid = preprocessor.transform(X_valid)
+                if cache_preprocessing:
+                    transformed_folds[fold_number] = (
+                        transformed_train,
+                        transformed_valid,
+                    )
 
             model = model_factory(params, random_state + fold_number)
             train_labels = np.ascontiguousarray(np.asarray(y_train))
@@ -73,6 +101,12 @@ def tune_model(
             probabilities = model.predict_proba(transformed_valid)
             fold_score = scorer(validation_labels, probabilities)
             fold_scores.append(fold_score)
+            if verbose:
+                seconds = time.perf_counter() - fold_start
+                print(
+                    f"{prefix} | AP {fold_score:.4f} | {seconds:.1f} s",
+                    flush=True,
+                )
 
             trial.report(float(np.mean(fold_scores)), step=fold_number)
             if trial.should_prune():

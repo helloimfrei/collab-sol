@@ -5,21 +5,25 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import SGDClassifier
 
 
 def build_logistic_regression(
     params: dict[str, Any],
     *,
     random_state: int,
-) -> LogisticRegression:
-    """Build the regularized logistic-regression likelihood model."""
+) -> SGDClassifier:
+    """Build scalable regularized logistic regression."""
 
-    return LogisticRegression(
+    return SGDClassifier(
         **params,
-        solver="saga",
-        max_iter=1_000,
+        loss="log_loss",
+        max_iter=100,
         tol=1e-3,
+        early_stopping=True,
+        validation_fraction=0.1,
+        n_iter_no_change=5,
+        average=True,
         random_state=random_state,
     )
 

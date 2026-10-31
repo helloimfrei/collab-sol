@@ -136,9 +136,12 @@ def main(model_name: str) -> None:
     def suggest_params(trial):
         if model_name == "logistic_regression":
             return {
-                "C": trial.suggest_float("C", 1e-4, 10.0, log=True),
-                "l1_ratio": trial.suggest_categorical(
-                    "l1_ratio", [0.0, 1.0]
+                "alpha": trial.suggest_float(
+                    "alpha", 1e-7, 1e-2, log=True
+                ),
+                "penalty": trial.suggest_categorical("penalty", ["l1", "l2"]),
+                "class_weight": trial.suggest_categorical(
+                    "class_weight", [None, "balanced"]
                 ),
             }
         if model_name == "xgboost":
@@ -230,6 +233,8 @@ def main(model_name: str) -> None:
         n_trials=args.trials,
         random_state=args.seed,
         study_name=f"likelihood_{model_name}",
+        cache_preprocessing=model_name == "logistic_regression",
+        verbose=True,
     )
     study.trials_dataframe().to_csv(run_dir / "optuna_trials.csv", index=False)
     print("Mean validation AP:", study.best_value)
