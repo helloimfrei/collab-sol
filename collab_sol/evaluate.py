@@ -135,9 +135,15 @@ def _inspection_budget_rows(
     total_incidents = int(cumulative_incidents[-1])
     prevalence = float(labels.mean())
 
+    available_budgets = [
+        budget for budget in DEFAULT_INSPECTION_BUDGETS if budget <= len(labels)
+    ]
+    if not available_budgets:
+        available_budgets = [len(labels)]
+
     rows = []
-    for budget in DEFAULT_INSPECTION_BUDGETS:
-        reviewed = min(budget, len(labels))
+    for budget in available_budgets:
+        reviewed = budget
         captured = int(cumulative_incidents[reviewed - 1])
         precision = captured / reviewed
         recall = captured / total_incidents if total_incidents else 0.0

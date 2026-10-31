@@ -33,6 +33,11 @@ explain = [
 gpu = [
     "torch",
 ]
+transformer = [
+    "joblib",
+    "rtdl-revisiting-models",
+    "torch",
+]
 
 [tool.pyright]
 pythonVersion = "3.11"

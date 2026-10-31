@@ -49,22 +49,17 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from collab_sol import generate_risk_report, make_expanding_temporal_split, tune_model
+from collab_sol.features import (
+    EXCLUDED_RISK_FEATURES,
+    split_risk_feature_columns,
+)
 
-ID_COLUMNS = ["crossingid", "asof_year"]
-TARGET_COLUMNS = ["incident", "severity_target"]
 ALL_COLUMNS = pq.read_schema(DATASET_PATH).names
-FEATURE_COLUMNS = [
-    column for column in ALL_COLUMNS
-    if column not in ID_COLUMNS + TARGET_COLUMNS
-]
+NUMERIC_FEATURES, CATEGORICAL_FEATURES = split_risk_feature_columns(ALL_COLUMNS)
+FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
-# The final dataset stores its 38 categorical predictors after the numeric predictors.
-categorical_start = FEATURE_COLUMNS.index("reportingagencytypecode")
-NUMERIC_FEATURES = FEATURE_COLUMNS[:categorical_start]
-CATEGORICAL_FEATURES = FEATURE_COLUMNS[categorical_start:]
-
-assert len(FEATURE_COLUMNS) == 229
-assert len(CATEGORICAL_FEATURES) == 38
+assert len(FEATURE_COLUMNS) == 224
+assert len(CATEGORICAL_FEATURES) == 37
 
 frame = pd.read_parquet(
     DATASET_PATH,
@@ -197,6 +192,7 @@ run_metadata = {
     "dataset_path": str(DATASET_PATH),
     "holdout_year": split.holdout_year,
     "feature_count": len(FEATURE_COLUMNS),
+    "excluded_features": EXCLUDED_RISK_FEATURES,
     "best_params": study.best_params,
     "mean_validation_average_precision": study.best_value,
     "device": str(model.device),

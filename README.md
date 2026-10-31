@@ -1,11 +1,14 @@
 # collab-sol
 
 Shared utilities for making our grade-crossing model comparisons consistent.
-Models and data preparation stay in team notebooks; this package provides:
+Team models can use the utilities directly; the package provides:
 
 - expanding temporal cross-validation with a final untouched year;
 - Optuna hyperparameter tuning; and
 - continuous risk-score evaluation and reporting.
+
+It also contains the shared CUDA MLP and FT-Transformer used by the local
+training scripts.
 
 ## Install in Colab
 
@@ -101,6 +104,12 @@ binary `incident` target, and the chosen features. Never use outcomes such as
 `incident_count`, `total_killed`, `total_injured`, or derived severity targets
 as risk features.
 
+All likelihood-model comparisons should use
+`split_risk_feature_columns(...)`. It keeps 224 predictors and consistently
+excludes coordinates (`latitude`, `longitude`), coordinate-provenance metadata
+(`latlongsourcecode`), and two ACS population totals (`B01001_E001`,
+`B03002_E001`) that duplicate the retained `B01003_E001`.
+
 See [`notebooks/utils_demo.ipynb`](notebooks/utils_demo.ipynb) for the complete
 Colab workflow using logistic regression. To test another model, replace only
 `suggest_params` and `build_model`.
@@ -131,3 +140,28 @@ uv run --extra gpu python scripts/train_mlp.py --require-cuda
 The script accepts `--trials`, `--max-epochs`, `--patience`, `--dataset`, and
 `--output-dir`. It defaults to 2 trials, 50 maximum epochs, and 5 patience
 epochs.
+
+## Train the FT-Transformer locally
+
+The FT-Transformer was adapted from Lucas Campa's
+[`crossings`](https://github.com/lucascampa/crossings) implementation at commit
+`ae8df19`. It uses category embeddings, fold-fitted quantile preprocessing for
+numeric values, validation-AP early stopping, and the same temporal tuner and
+final report as the MLP.
+
+```bash
+uv sync --extra transformer
+
+# Quick end-to-end check
+uv run --extra transformer python scripts/train_ft_transformer.py \
+  --smoke --require-cuda
+
+# Full search on the default final dataset
+uv run --extra transformer python scripts/train_ft_transformer.py \
+  --require-cuda --trials 20
+```
+
+The default transformer batch size is 256 for an 8 GB GPU. Reduce it to 128
+with `--batch-size 128` if CUDA runs out of memory. Each run receives its own
+timestamped folder under `runs/` and records the feature exclusions and exact
+command in `run.json`.
