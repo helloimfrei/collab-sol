@@ -27,7 +27,12 @@ parser.add_argument("--max-epochs", type=int, default=12)
 parser.add_argument("--patience", type=int, default=3)
 parser.add_argument("--batch-size", type=int, default=128)
 parser.add_argument("--screening-fraction", type=float, default=0.25)
-parser.add_argument("--finalists", type=int, default=3)
+parser.add_argument(
+    "--finalists",
+    type=int,
+    default=0,
+    help="number of sampled-CV winners to re-evaluate with full-data CV",
+)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--require-cuda", action="store_true")
 parser.add_argument(
@@ -42,12 +47,12 @@ if args.smoke:
     args.max_epochs = 2
     args.patience = 2
     args.screening_fraction = 1.0
-    args.finalists = 1
+    args.finalists = min(args.finalists, args.trials)
 
 if not 0.0 < args.screening_fraction <= 1.0:
     raise ValueError("--screening-fraction must be greater than 0 and at most 1.")
-if not 1 <= args.finalists <= args.trials:
-    raise ValueError("--finalists must be between 1 and --trials.")
+if not 0 <= args.finalists <= args.trials:
+    raise ValueError("--finalists must be between 0 and --trials.")
 
 DATASET_PATH = args.dataset.resolve()
 if args.output_dir is None:
@@ -274,7 +279,7 @@ def make_fit_model(stage_name, parameter_set_count, fold_count):
     return fit_model, best_epochs_by_params
 
 
-screening_fit_model, _ = make_fit_model(
+screening_fit_model, screening_best_epochs = make_fit_model(
     "screening trial",
     args.trials,
     len(screening_split.folds),
@@ -297,52 +302,62 @@ screening_study.trials_dataframe().to_csv(
     index=False,
 )
 
-completed_screening_trials = sorted(
-    (
-        trial
-        for trial in screening_study.trials
-        if trial.state == TrialState.COMPLETE and trial.value is not None
-    ),
-    key=lambda trial: (
-        trial.value if trial.value is not None else float("-inf")
-    ),
-    reverse=True,
-)
-if len(completed_screening_trials) < args.finalists:
-    raise RuntimeError(
-        "Fewer screening trials completed than requested finalists."
-    )
-finalist_params = [
-    trial.params for trial in completed_screening_trials[: args.finalists]
-]
-print(f"Re-evaluating {len(finalist_params)} finalists on full temporal CV.")
+finalist_params: list[dict] = []
+selected_best_epochs = screening_best_epochs
+study = screening_study
+validation_scope = "sampled_crossing_cv"
 
-full_fit_model, full_best_epochs = make_fit_model(
-    "full-data finalist",
-    len(finalist_params),
-    len(split.folds),
-)
-study = tune_model(
-    model_factory=build_model,
-    suggest_params=suggest_params,
-    X=X,
-    y=y,
-    split=split,
-    preprocessor_factory=new_preprocessor,
-    fit_model=full_fit_model,
-    n_trials=len(finalist_params),
-    random_state=args.seed,
-    study_name="incident_likelihood_ft_transformer_finalists",
-    enqueued_trials=finalist_params,
-    pruner=NopPruner(),
-    cache_preprocessing=True,
-)
+if args.finalists:
+    completed_screening_trials = sorted(
+        (
+            trial
+            for trial in screening_study.trials
+            if trial.state == TrialState.COMPLETE and trial.value is not None
+        ),
+        key=lambda trial: (
+            trial.value if trial.value is not None else float("-inf")
+        ),
+        reverse=True,
+    )
+    if len(completed_screening_trials) < args.finalists:
+        raise RuntimeError(
+            "Fewer screening trials completed than requested finalists."
+        )
+    finalist_params = [
+        trial.params for trial in completed_screening_trials[: args.finalists]
+    ]
+    print(f"Re-evaluating {len(finalist_params)} finalists on full temporal CV.")
+
+    full_fit_model, selected_best_epochs = make_fit_model(
+        "full-data finalist",
+        len(finalist_params),
+        len(split.folds),
+    )
+    study = tune_model(
+        model_factory=build_model,
+        suggest_params=suggest_params,
+        X=X,
+        y=y,
+        split=split,
+        preprocessor_factory=new_preprocessor,
+        fit_model=full_fit_model,
+        n_trials=len(finalist_params),
+        random_state=args.seed,
+        study_name="incident_likelihood_ft_transformer_finalists",
+        enqueued_trials=finalist_params,
+        pruner=NopPruner(),
+        cache_preprocessing=True,
+    )
+    validation_scope = "full_data_cv"
+else:
+    print("Skipping full-data finalist CV; using the sampled-CV winner.")
+
 study.trials_dataframe().to_csv(RUN_DIR / "optuna_trials.csv", index=False)
-print("Full-data mean validation AP:", study.best_value)
+print("Selected mean validation AP:", study.best_value)
 print("Selected parameters:", study.best_params)
 
 best_key = json.dumps(study.best_params, sort_keys=True)
-best_epochs = full_best_epochs[best_key]
+best_epochs = selected_best_epochs[best_key]
 final_epochs = max(1, int(round(float(np.median(best_epochs)))))
 
 development_rows = split.development_indices
@@ -391,6 +406,7 @@ run_metadata = {
     "excluded_features": EXCLUDED_RISK_FEATURES,
     "best_params": study.best_params,
     "mean_validation_average_precision": study.best_value,
+    "validation_scope": validation_scope,
     "validation_fold_scores": study.best_trial.user_attrs.get("fold_scores"),
     "best_epoch_per_fold": best_epochs,
     "final_refit_epochs": final_epochs,

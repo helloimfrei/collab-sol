@@ -225,11 +225,14 @@ uv run python scripts/train_likelihood_ft_transformer.py \
   --require-cuda --trials 20
 ```
 
-The transformer first screens 20 parameter sets on a fixed 25% sample of
-crossing IDs stratified by their 2019--2023 presence and incident patterns,
-then re-evaluates the best three with full-data temporal CV. A saved audit
-compares full and sampled prevalence by development year. The 2024 holdout
-remains untouched until the selected model's final evaluation.
+The transformer screens 20 parameter sets with temporal CV on a fixed 25%
+sample of crossing IDs stratified by their 2019--2023 presence and incident
+patterns. The sampled-CV winner is refit on all 2019--2023 rows and evaluated
+on 2024. Its validation AP must be labeled as sampled-CV AP because it is not
+directly comparable to the other models' full-data validation AP. A saved
+audit compares full and sampled prevalence by development year. Set
+`--finalists N` to optionally re-evaluate the best `N` configurations with
+full-data temporal CV before the final refit.
 Defaults are 1--2 transformer blocks, widths of 64 or 128, 12 maximum epochs,
 3 patience epochs, and a batch size of 128 for an 8 GB GPU. Reduce the batch
 size to 64 if needed. Fold preprocessing is cached across trials, and any
