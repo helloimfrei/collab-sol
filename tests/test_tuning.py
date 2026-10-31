@@ -121,3 +121,26 @@ def test_custom_fit_function_receives_validation_data() -> None:
     )
 
     assert validation_sizes == [2, 2, 2, 2]
+
+
+def test_tuner_runs_enqueued_parameter_sets() -> None:
+    frame = pd.DataFrame(
+        {
+            "feature": np.arange(12),
+            "year": [year for year in range(2018, 2024) for _ in range(2)],
+            "target": [0, 1] * 6,
+        }
+    )
+    split = make_expanding_temporal_split(frame, year_column="year")
+
+    study = tune_model(
+        model_factory=build_recording_model,
+        suggest_params=suggest_probability,
+        X=frame[["feature"]],
+        y=frame["target"],
+        split=split,
+        n_trials=2,
+        enqueued_trials=[{"probability": 0.2}, {"probability": 0.8}],
+    )
+
+    assert [trial.params["probability"] for trial in study.trials] == [0.2, 0.8]

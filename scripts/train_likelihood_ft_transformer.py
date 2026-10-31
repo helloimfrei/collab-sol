@@ -23,9 +23,11 @@ parser.add_argument(
 )
 parser.add_argument("--output-dir", type=Path)
 parser.add_argument("--trials", type=int, default=20)
-parser.add_argument("--max-epochs", type=int, default=50)
-parser.add_argument("--patience", type=int, default=5)
-parser.add_argument("--batch-size", type=int, default=64)
+parser.add_argument("--max-epochs", type=int, default=12)
+parser.add_argument("--patience", type=int, default=3)
+parser.add_argument("--batch-size", type=int, default=128)
+parser.add_argument("--screening-fraction", type=float, default=0.25)
+parser.add_argument("--finalists", type=int, default=3)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--require-cuda", action="store_true")
 parser.add_argument(
@@ -39,6 +41,13 @@ if args.smoke:
     args.trials = 1
     args.max_epochs = 2
     args.patience = 2
+    args.screening_fraction = 1.0
+    args.finalists = 1
+
+if not 0.0 < args.screening_fraction <= 1.0:
+    raise ValueError("--screening-fraction must be greater than 0 and at most 1.")
+if not 1 <= args.finalists <= args.trials:
+    raise ValueError("--finalists must be between 1 and --trials.")
 
 DATASET_PATH = args.dataset.resolve()
 if args.output_dir is None:
@@ -63,6 +72,8 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import torch
+from optuna.pruners import NopPruner
+from optuna.trial import TrialState
 
 from collab_sol import (
     generate_risk_report,
@@ -131,6 +142,30 @@ X = cast(pd.DataFrame, frame[FEATURE_COLUMNS])
 y = cast(pd.Series, frame["incident"].astype(int))
 split = make_expanding_temporal_split(frame, year_column="asof_year")
 crossing_ids = np.asarray(frame["crossingid"])
+
+development_crossings = frame.iloc[split.development_indices][
+    "crossingid"
+].drop_duplicates()
+sampled_crossings = development_crossings.sample(
+    frac=args.screening_fraction,
+    random_state=args.seed,
+)
+screening_rows = np.flatnonzero(frame["crossingid"].isin(sampled_crossings))
+screening_frame = cast(
+    pd.DataFrame,
+    frame.iloc[screening_rows].reset_index(drop=True),
+)
+screening_X = cast(pd.DataFrame, screening_frame[FEATURE_COLUMNS])
+screening_y = cast(pd.Series, screening_frame["incident"].astype(int))
+screening_split = make_expanding_temporal_split(
+    screening_frame,
+    year_column="asof_year",
+)
+print(
+    "Screening sample:",
+    f"{len(sampled_crossings):,} crossings / {len(screening_frame):,} rows",
+    f"({args.screening_fraction:.0%} of development crossings)",
+)
 del frame
 
 
@@ -147,10 +182,8 @@ def suggest_params(trial):
         n_blocks = trial.suggest_categorical("n_blocks", [1])
         d_block = trial.suggest_categorical("d_block", [64])
     else:
-        n_blocks = trial.suggest_int("n_blocks", 1, 4)
-        d_block = trial.suggest_categorical(
-            "d_block", [64, 128, 192, 256]
-        )
+        n_blocks = trial.suggest_int("n_blocks", 1, 2)
+        d_block = trial.suggest_categorical("d_block", [64, 128])
     return {
         "n_blocks": n_blocks,
         "d_block": d_block,
@@ -186,28 +219,72 @@ def build_model(params, random_state):
     return model
 
 
-best_epochs_by_params: dict[str, list[int]] = {}
-parameter_set_numbers: dict[str, int] = {}
+def make_fit_model(stage_name, parameter_set_count, fold_count):
+    best_epochs_by_params: dict[str, list[int]] = {}
+    parameter_set_numbers: dict[str, int] = {}
+
+    def fit_model(model, X_train, y_train, X_valid, y_valid):
+        key = json.dumps(model.tuned_params_, sort_keys=True)
+        if key not in parameter_set_numbers:
+            parameter_set_numbers[key] = len(parameter_set_numbers) + 1
+        fold_number = len(best_epochs_by_params.get(key, [])) + 1
+        model.log_prefix = (
+            f"{stage_name} {parameter_set_numbers[key]}/{parameter_set_count} | "
+            f"fold {fold_number}/{fold_count}"
+        )
+        model.fit_with_validation(X_train, y_train, X_valid, y_valid)
+        best_epochs_by_params.setdefault(key, []).append(model.best_epoch_)
+
+    return fit_model, best_epochs_by_params
 
 
-def fit_model(model, X_train, y_train, X_valid, y_valid):
-    key = json.dumps(model.tuned_params_, sort_keys=True)
-    if key not in parameter_set_numbers:
-        parameter_set_numbers[key] = len(parameter_set_numbers) + 1
-    fold_number = len(best_epochs_by_params.get(key, [])) + 1
-    model.log_prefix = (
-        f"trial {parameter_set_numbers[key]}/{args.trials} | "
-        f"fold {fold_number}/{len(split.folds)}"
+screening_fit_model, _ = make_fit_model(
+    "screening trial",
+    args.trials,
+    len(screening_split.folds),
+)
+screening_study = tune_model(
+    model_factory=build_model,
+    suggest_params=suggest_params,
+    X=screening_X,
+    y=screening_y,
+    split=screening_split,
+    preprocessor_factory=new_preprocessor,
+    fit_model=screening_fit_model,
+    n_trials=args.trials,
+    random_state=args.seed,
+    study_name="incident_likelihood_ft_transformer_screening",
+)
+screening_study.trials_dataframe().to_csv(
+    RUN_DIR / "optuna_screening_trials.csv",
+    index=False,
+)
+
+completed_screening_trials = sorted(
+    (
+        trial
+        for trial in screening_study.trials
+        if trial.state == TrialState.COMPLETE and trial.value is not None
+    ),
+    key=lambda trial: (
+        trial.value if trial.value is not None else float("-inf")
+    ),
+    reverse=True,
+)
+if len(completed_screening_trials) < args.finalists:
+    raise RuntimeError(
+        "Fewer screening trials completed than requested finalists."
     )
-    model.fit_with_validation(
-        X_train,
-        y_train,
-        X_valid,
-        y_valid,
-    )
-    best_epochs_by_params.setdefault(key, []).append(model.best_epoch_)
+finalist_params = [
+    trial.params for trial in completed_screening_trials[: args.finalists]
+]
+print(f"Re-evaluating {len(finalist_params)} finalists on full temporal CV.")
 
-
+full_fit_model, full_best_epochs = make_fit_model(
+    "full-data finalist",
+    len(finalist_params),
+    len(split.folds),
+)
 study = tune_model(
     model_factory=build_model,
     suggest_params=suggest_params,
@@ -215,17 +292,19 @@ study = tune_model(
     y=y,
     split=split,
     preprocessor_factory=new_preprocessor,
-    fit_model=fit_model,
-    n_trials=args.trials,
+    fit_model=full_fit_model,
+    n_trials=len(finalist_params),
     random_state=args.seed,
-    study_name="incident_likelihood_ft_transformer",
+    study_name="incident_likelihood_ft_transformer_finalists",
+    enqueued_trials=finalist_params,
+    pruner=NopPruner(),
 )
 study.trials_dataframe().to_csv(RUN_DIR / "optuna_trials.csv", index=False)
-print("Mean validation AP:", study.best_value)
-print("Best parameters:", study.best_params)
+print("Full-data mean validation AP:", study.best_value)
+print("Selected parameters:", study.best_params)
 
 best_key = json.dumps(study.best_params, sort_keys=True)
-best_epochs = best_epochs_by_params[best_key]
+best_epochs = full_best_epochs[best_key]
 final_epochs = max(1, int(round(float(np.median(best_epochs)))))
 
 development_rows = split.development_indices
@@ -280,6 +359,11 @@ run_metadata = {
     "test_metrics": metrics.to_dict(),
     "device": str(model.device),
     "n_trials": args.trials,
+    "screening_fraction": args.screening_fraction,
+    "screening_rows": len(screening_X),
+    "screening_crossings": len(sampled_crossings),
+    "screening_best_average_precision": screening_study.best_value,
+    "full_data_finalists": len(finalist_params),
     "max_epochs": args.max_epochs,
     "patience": args.patience,
     "batch_size": args.batch_size,

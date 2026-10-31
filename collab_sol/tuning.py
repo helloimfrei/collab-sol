@@ -23,6 +23,8 @@ def tune_model(
     random_state: int = 42,
     study_name: str | None = None,
     storage: str | None = None,
+    enqueued_trials=None,
+    pruner=None,
 ) -> optuna.Study:
     """Tune any probabilistic classifier without exposing the holdout.
 
@@ -87,10 +89,13 @@ def tune_model(
     study = optuna.create_study(
         direction="maximize",
         sampler=sampler,
+        pruner=pruner,
         study_name=study_name,
         storage=storage,
         load_if_exists=storage is not None,
     )
+    for params in enqueued_trials or []:
+        study.enqueue_trial(params)
     study.optimize(objective, n_trials=n_trials, n_jobs=1)
     return study
 
