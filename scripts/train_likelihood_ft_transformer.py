@@ -74,6 +74,7 @@ import pyarrow.parquet as pq
 import torch
 from optuna.pruners import NopPruner
 from optuna.trial import TrialState
+from optuna.exceptions import TrialPruned
 
 from collab_sol import (
     generate_risk_report,
@@ -256,7 +257,18 @@ def make_fit_model(stage_name, parameter_set_count, fold_count):
             f"{stage_name} {parameter_set_numbers[key]}/{parameter_set_count} | "
             f"fold {fold_number}/{fold_count}"
         )
-        model.fit_with_validation(X_train, y_train, X_valid, y_valid)
+        print(
+            f"{model.log_prefix} | blocks={model.n_blocks} | "
+            f"width={model.d_block} | batch={model.batch_size}",
+            flush=True,
+        )
+        try:
+            model.fit_with_validation(X_train, y_train, X_valid, y_valid)
+        except torch.cuda.OutOfMemoryError as error:
+            torch.cuda.empty_cache()
+            raise TrialPruned(
+                "FT-Transformer configuration exceeded CUDA memory."
+            ) from error
         best_epochs_by_params.setdefault(key, []).append(model.best_epoch_)
 
     return fit_model, best_epochs_by_params
@@ -278,6 +290,7 @@ screening_study = tune_model(
     n_trials=args.trials,
     random_state=args.seed,
     study_name="incident_likelihood_ft_transformer_screening",
+    cache_preprocessing=True,
 )
 screening_study.trials_dataframe().to_csv(
     RUN_DIR / "optuna_screening_trials.csv",
@@ -322,6 +335,7 @@ study = tune_model(
     study_name="incident_likelihood_ft_transformer_finalists",
     enqueued_trials=finalist_params,
     pruner=NopPruner(),
+    cache_preprocessing=True,
 )
 study.trials_dataframe().to_csv(RUN_DIR / "optuna_trials.csv", index=False)
 print("Full-data mean validation AP:", study.best_value)
