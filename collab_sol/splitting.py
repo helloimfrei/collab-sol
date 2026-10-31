@@ -8,6 +8,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
+from sklearn.model_selection import train_test_split
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,86 @@ class TemporalSplit:
     development_indices: NDArray[np.int64]
     holdout_indices: NDArray[np.int64]
     holdout_year: int
+
+
+def stratified_crossing_sample(
+    frame: pd.DataFrame,
+    *,
+    sample_fraction: float,
+    random_state: int,
+    crossing_column: str = "crossingid",
+    year_column: str = "asof_year",
+    target_column: str = "incident",
+) -> pd.Index:
+    """Sample crossing IDs while preserving yearly incident patterns."""
+
+    required = {crossing_column, year_column, target_column}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(f"Missing sampling columns: {sorted(missing)}")
+    if not 0.0 < sample_fraction <= 1.0:
+        raise ValueError("sample_fraction must be greater than 0 and at most 1.")
+    target = cast(pd.Series, frame[target_column])
+    if bool(target.isna().any()):
+        raise ValueError(f"{target_column} cannot contain missing values.")
+
+    years = sorted(int(year) for year in frame[year_column].unique())
+    presence = frame.assign(_present=1).pivot_table(
+        index=crossing_column,
+        columns=year_column,
+        values="_present",
+        aggfunc="max",
+        fill_value=0,
+    )
+    presence = presence.reindex(columns=years, fill_value=0)
+    incidents = frame.pivot_table(
+        index=crossing_column,
+        columns=year_column,
+        values=target_column,
+        aggfunc="max",
+        fill_value=0,
+    )
+    incidents = incidents.reindex(
+        index=presence.index,
+        columns=years,
+        fill_value=0,
+    )
+
+    if sample_fraction == 1.0:
+        return presence.index
+
+    weights = np.left_shift(1, np.arange(len(years), dtype=np.int64))
+    presence_codes = presence.to_numpy(dtype=np.int64) @ weights
+    incident_codes = (incidents.to_numpy(dtype=np.int64) > 0) @ weights
+    strata = pd.Series(
+        [
+            f"{presence_code}:{incident_code}"
+            for presence_code, incident_code in zip(
+                presence_codes,
+                incident_codes,
+            )
+        ],
+        index=presence.index,
+    )
+
+    minimum_size = max(2, int(np.ceil(1.0 / sample_fraction)))
+    counts = strata.value_counts()
+    strata = strata.where(strata.map(counts) >= minimum_size, "rare")
+    stratum_counts = strata.value_counts()
+    if int(stratum_counts.min()) < 2:
+        largest_stratum = str(stratum_counts.index[0])
+        singleton_strata = [
+            label for label, count in stratum_counts.items() if int(count) < 2
+        ]
+        strata = strata.where(~strata.isin(singleton_strata), largest_stratum)
+
+    _, sampled_ids = train_test_split(
+        presence.index.to_numpy(),
+        test_size=sample_fraction,
+        random_state=random_state,
+        stratify=strata.to_numpy(),
+    )
+    return pd.Index(sampled_ids)
 
 
 def make_expanding_temporal_split(

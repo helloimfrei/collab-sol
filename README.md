@@ -211,8 +211,10 @@ uv run python scripts/train_likelihood_ft_transformer.py \
 ```
 
 The transformer first screens 20 parameter sets on a fixed 25% sample of
-crossing IDs, then re-evaluates the best three with full-data temporal CV. The
-2024 holdout remains untouched until the selected model's final evaluation.
+crossing IDs stratified by their 2019--2023 presence and incident patterns,
+then re-evaluates the best three with full-data temporal CV. A saved audit
+compares full and sampled prevalence by development year. The 2024 holdout
+remains untouched until the selected model's final evaluation.
 Defaults are 1--2 transformer blocks, widths of 64 or 128, 12 maximum epochs,
 3 patience epochs, and a batch size of 128 for an 8 GB GPU. Reduce the batch
 size to 64 if CUDA runs out of memory. Each run receives its own timestamped

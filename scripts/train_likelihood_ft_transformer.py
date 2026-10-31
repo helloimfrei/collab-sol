@@ -78,6 +78,7 @@ from optuna.trial import TrialState
 from collab_sol import (
     generate_risk_report,
     make_expanding_temporal_split,
+    stratified_crossing_sample,
     tune_model,
 )
 from collab_sol.features import (
@@ -143,14 +144,18 @@ y = cast(pd.Series, frame["incident"].astype(int))
 split = make_expanding_temporal_split(frame, year_column="asof_year")
 crossing_ids = np.asarray(frame["crossingid"])
 
-development_crossings = frame.iloc[split.development_indices][
-    "crossingid"
-].drop_duplicates()
-sampled_crossings = development_crossings.sample(
-    frac=args.screening_fraction,
+development_frame = cast(
+    pd.DataFrame,
+    frame.iloc[split.development_indices],
+)
+sampled_crossings = stratified_crossing_sample(
+    development_frame,
+    sample_fraction=args.screening_fraction,
     random_state=args.seed,
 )
-screening_rows = np.flatnonzero(frame["crossingid"].isin(sampled_crossings))
+screening_rows = np.flatnonzero(
+    frame["crossingid"].isin(sampled_crossings.tolist())
+)
 screening_frame = cast(
     pd.DataFrame,
     frame.iloc[screening_rows].reset_index(drop=True),
@@ -161,11 +166,30 @@ screening_split = make_expanding_temporal_split(
     screening_frame,
     year_column="asof_year",
 )
+full_development_summary = development_frame.groupby("asof_year")[
+    "incident"
+].agg(full_rows="size", full_incidents="sum", full_prevalence="mean")
+sampled_development_summary = screening_frame.iloc[
+    screening_split.development_indices
+].groupby("asof_year")["incident"].agg(
+    sampled_rows="size",
+    sampled_incidents="sum",
+    sampled_prevalence="mean",
+)
+screening_prevalence = full_development_summary.join(
+    sampled_development_summary,
+)
+screening_prevalence["prevalence_difference"] = (
+    screening_prevalence["sampled_prevalence"]
+    - screening_prevalence["full_prevalence"]
+)
+screening_prevalence.to_csv(RUN_DIR / "screening_prevalence_by_year.csv")
 print(
     "Screening sample:",
     f"{len(sampled_crossings):,} crossings / {len(screening_frame):,} rows",
     f"({args.screening_fraction:.0%} of development crossings)",
 )
+print(screening_prevalence)
 del frame
 
 
@@ -360,6 +384,7 @@ run_metadata = {
     "device": str(model.device),
     "n_trials": args.trials,
     "screening_fraction": args.screening_fraction,
+    "screening_sampling": "crossing_presence_incident_pattern_stratified",
     "screening_rows": len(screening_X),
     "screening_crossings": len(sampled_crossings),
     "screening_best_average_precision": screening_study.best_value,

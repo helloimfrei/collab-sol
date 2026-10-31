@@ -14,6 +14,7 @@ from collab_sol.splitting import (
     TemporalFold,
     TemporalSplit,
     make_expanding_temporal_split,
+    stratified_crossing_sample,
 )
 from collab_sol.tuning import tune_model
 
@@ -26,6 +27,7 @@ __all__ = [
     "evaluate_binary_risk",
     "generate_risk_report",
     "make_expanding_temporal_split",
+    "stratified_crossing_sample",
     "split_risk_feature_columns",
     "tune_model",
 ]
