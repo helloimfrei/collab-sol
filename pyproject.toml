@@ -7,6 +7,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
       "numpy",
       "matplotlib",
+      "joblib",
       "optuna",
       "pandas==2.2.3",
       "pyarrow",
@@ -34,9 +35,11 @@ gpu = [
     "torch",
 ]
 transformer = [
-    "joblib",
     "rtdl-revisiting-models",
     "torch",
+]
+classical = [
+    "xgboost",
 ]
 
 [tool.pyright]

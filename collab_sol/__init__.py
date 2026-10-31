@@ -1,5 +1,6 @@
 """Small utilities for reproducible grade-crossing model comparisons."""
 
+from collab_sol.classical_models import IsolationForestRiskModel
 from collab_sol.evaluate import (
     RiskMetrics,
     evaluate_binary_risk,
@@ -21,6 +22,7 @@ __all__ = [
     "TemporalFold",
     "TemporalSplit",
     "EXCLUDED_RISK_FEATURES",
+    "IsolationForestRiskModel",
     "evaluate_binary_risk",
     "generate_risk_report",
     "make_expanding_temporal_split",

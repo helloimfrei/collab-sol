@@ -114,7 +114,49 @@ See [`notebooks/utils_demo.ipynb`](notebooks/utils_demo.ipynb) for the complete
 Colab workflow using logistic regression. To test another model, replace only
 `suggest_params` and `build_model`.
 
-## Train the GPU MLP locally
+## Train the crash-likelihood models locally
+
+These scripts are specifically for the binary `incident` likelihood task. The
+future severity classifiers will use separate `train_severity_*` entry points.
+Every likelihood script uses the same 224 predictors, expanding temporal folds,
+mean validation AP objective, and untouched 2024 evaluation.
+
+Individual entry points:
+
+```text
+scripts/train_likelihood_logistic_regression.py
+scripts/train_likelihood_xgboost.py
+scripts/train_likelihood_isolation_forest.py
+scripts/train_likelihood_mlp.py
+scripts/train_likelihood_ft_transformer.py
+```
+
+Install every model dependency and smoke-test the complete panel:
+
+```bash
+uv sync --extra classical --extra gpu --extra transformer
+uv run --extra classical --extra gpu --extra transformer \
+  python scripts/train_likelihood_models.py --smoke
+```
+
+On the Linux GPU machine, run the complete comparison with:
+
+```bash
+uv run --extra classical --extra gpu --extra transformer \
+  python scripts/train_likelihood_models.py \
+  --require-cuda \
+  --xgboost-device cuda \
+  --trials 20
+```
+
+The master script runs models sequentially so each process releases its memory
+before the next begins. Results are grouped under one timestamped
+`runs/likelihood_panel_*` directory, with a `panel_run.json` manifest and one folder
+per model. `model_comparison.csv` collects validation AP, test AP, and test
+prevalence for the entire panel. Use `--models xgboost mlp` to run only selected
+models.
+
+### MLP details
 
 [`notebooks/mlp_training.py`](notebooks/mlp_training.py) is a Marimo notebook
 for tuning the PyTorch MLP over the temporal folds and evaluating 2024 once.
@@ -134,14 +176,14 @@ For a non-interactive run without Marimo:
 
 ```bash
 uv sync --extra gpu
-uv run --extra gpu python scripts/train_mlp.py --require-cuda
+uv run --extra gpu python scripts/train_likelihood_mlp.py --require-cuda
 ```
 
 The script accepts `--trials`, `--max-epochs`, `--patience`, `--dataset`, and
-`--output-dir`. It defaults to 2 trials, 50 maximum epochs, and 5 patience
+`--output-dir`. It defaults to 20 trials, 50 maximum epochs, and 5 patience
 epochs.
 
-## Train the FT-Transformer locally
+### FT-Transformer details
 
 The FT-Transformer was adapted from Lucas Campa's
 [`crossings`](https://github.com/lucascampa/crossings) implementation at commit
@@ -153,11 +195,11 @@ final report as the MLP.
 uv sync --extra transformer
 
 # Quick end-to-end check
-uv run --extra transformer python scripts/train_ft_transformer.py \
+uv run --extra transformer python scripts/train_likelihood_ft_transformer.py \
   --smoke --require-cuda
 
 # Full search on the default final dataset
-uv run --extra transformer python scripts/train_ft_transformer.py \
+uv run --extra transformer python scripts/train_likelihood_ft_transformer.py \
   --require-cuda --trials 20
 ```
 

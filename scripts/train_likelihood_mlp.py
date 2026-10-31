@@ -1,8 +1,10 @@
-"""Tune and evaluate the CUDA-capable grade-crossing risk MLP."""
+"""Tune and evaluate the CUDA-capable MLP crash-likelihood model."""
 
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
+from typing import cast
 
 PROJECT_CODE_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = PROJECT_CODE_ROOT / "collab-sol"
@@ -16,21 +18,38 @@ parser.add_argument(
 parser.add_argument(
     "--output-dir",
     type=Path,
-    default=PACKAGE_ROOT / "runs" / "pytorch_mlp",
 )
-parser.add_argument("--trials", type=int, default=2)
+parser.add_argument("--trials", type=int, default=20)
 parser.add_argument("--max-epochs", type=int, default=50)
 parser.add_argument("--patience", type=int, default=5)
+parser.add_argument("--batch-size", type=int, default=16_384)
+parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--require-cuda", action="store_true")
+parser.add_argument(
+    "--smoke",
+    action="store_true",
+    help="use 2,000 crossings, one trial, and two epochs",
+)
 args = parser.parse_args()
 
+if args.smoke:
+    args.trials = 1
+    args.max_epochs = 2
+    args.patience = 2
+
 DATASET_PATH = args.dataset.resolve()
+if args.output_dir is None:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    suffix = "_smoke" if args.smoke else ""
+    args.output_dir = PACKAGE_ROOT / "runs" / f"likelihood_mlp_{timestamp}{suffix}"
 RUN_DIR = args.output_dir.resolve()
 
 if not PACKAGE_ROOT.is_dir():
     raise FileNotFoundError(f"collab-sol package not found: {PACKAGE_ROOT}")
 if not DATASET_PATH.is_file():
     raise FileNotFoundError(f"Final dataset not found: {DATASET_PATH}")
+if RUN_DIR.exists() and any(RUN_DIR.iterdir()):
+    raise FileExistsError(f"Output directory is not empty: {RUN_DIR}")
 
 if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
@@ -40,19 +59,17 @@ RUN_DIR.mkdir(parents=True, exist_ok=True)
 # 2. Load the already-filtered modeling dataset.
 import json
 
+import joblib
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from collab_sol import generate_risk_report, make_expanding_temporal_split, tune_model
 from collab_sol.features import (
     EXCLUDED_RISK_FEATURES,
     split_risk_feature_columns,
 )
+from collab_sol.preprocessing import make_one_hot_preprocessor
 
 ALL_COLUMNS = pq.read_schema(DATASET_PATH).names
 NUMERIC_FEATURES, CATEGORICAL_FEATURES = split_risk_feature_columns(ALL_COLUMNS)
@@ -61,10 +78,22 @@ FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 assert len(FEATURE_COLUMNS) == 224
 assert len(CATEGORICAL_FEATURES) == 37
 
-frame = pd.read_parquet(
-    DATASET_PATH,
-    columns=["crossingid", "asof_year", "incident", *FEATURE_COLUMNS],
+frame = cast(
+    pd.DataFrame,
+    pd.read_parquet(
+        DATASET_PATH,
+        columns=["crossingid", "asof_year", "incident", *FEATURE_COLUMNS],
+    ),
 )
+if args.smoke:
+    crossing_ids = frame["crossingid"].drop_duplicates()
+    sampled_ids = crossing_ids.sample(
+        n=min(2_000, len(crossing_ids)), random_state=args.seed
+    )
+    frame = cast(
+        pd.DataFrame,
+        frame[frame["crossingid"].isin(sampled_ids)].reset_index(drop=True),
+    )
 frame[NUMERIC_FEATURES] = frame[NUMERIC_FEATURES].astype(np.float32)
 for column in CATEGORICAL_FEATURES:
     frame[column] = frame[column].astype("category")
@@ -72,6 +101,7 @@ for column in CATEGORICAL_FEATURES:
 yearly_summary = frame.groupby("asof_year")["incident"].agg(
     rows="size", crashes="sum", prevalence="mean"
 )
+yearly_summary.to_csv(RUN_DIR / "class_balance_by_year.csv")
 print(yearly_summary)
 print("Package:", PACKAGE_ROOT)
 print("Dataset:", DATASET_PATH)
@@ -80,36 +110,17 @@ print(f"Using {len(FEATURE_COLUMNS)} predictors: "
 
 # %%
 # 3. Create the temporal folds and fold-safe preprocessing.
-X = frame[FEATURE_COLUMNS]
-y = frame["incident"].astype(int)
+X = cast(pd.DataFrame, frame[FEATURE_COLUMNS])
+y = cast(pd.Series, frame["incident"].astype(int))
 split = make_expanding_temporal_split(frame, year_column="asof_year")
-crossing_ids = frame["crossingid"].to_numpy()
+crossing_ids = np.asarray(frame["crossingid"])
 del frame
 
 def make_preprocessor():
-    return ColumnTransformer(
-        [
-            (
-                "numeric",
-                make_pipeline(
-                    SimpleImputer(strategy="median", add_indicator=True),
-                    StandardScaler(),
-                ),
-                NUMERIC_FEATURES,
-            ),
-            (
-                "categorical",
-                make_pipeline(
-                    SimpleImputer(strategy="most_frequent"),
-                    OneHotEncoder(
-                        handle_unknown="ignore",
-                        dtype=np.float32,  # pyright: ignore[reportArgumentType]
-                    ),
-                ),
-                CATEGORICAL_FEATURES,
-            ),
-        ],
-        sparse_threshold=1.0,
+    return make_one_hot_preprocessor(
+        NUMERIC_FEATURES,
+        CATEGORICAL_FEATURES,
+        scale_numeric=True,
     )
 
 print("Validation years:", [fold.validation_year for fold in split.folds])
@@ -143,7 +154,7 @@ def suggest_params(trial):
 def build_model(params, random_state):
     return TorchMLPClassifier(
         random_state=random_state,
-        batch_size=16384,
+        batch_size=args.batch_size,
         max_epochs=args.max_epochs,
         patience=args.patience,
         **params.copy(),
@@ -158,7 +169,8 @@ study = tune_model(
     split=split,
     preprocessor_factory=make_preprocessor,
     n_trials=args.trials,
-    study_name="pytorch_mlp_risk",
+    random_state=args.seed,
+    study_name="incident_likelihood_mlp",
 )
 
 study.trials_dataframe().to_csv(RUN_DIR / "optuna_trials.csv", index=False)
@@ -176,7 +188,7 @@ X_development = preprocessor.fit_transform(
 )
 X_test = preprocessor.transform(X.iloc[test_rows])
 
-model = build_model(study.best_params, random_state=42)
+model = build_model(study.best_params, random_state=args.seed)
 model.fit(X_development, y.iloc[development_rows].to_numpy())
 
 metrics = generate_risk_report(
@@ -187,12 +199,19 @@ metrics = generate_risk_report(
     row_ids=crossing_ids[test_rows],
 )
 
+joblib.dump(preprocessor, RUN_DIR / "preprocessor.joblib")
+if model.network_ is None:
+    raise RuntimeError("The final MLP was not fitted.")
+torch.save(model.network_.state_dict(), RUN_DIR / "model_state.pt")
+
 run_metadata = {
+    "task": "incident_likelihood",
     "model": type(model).__name__,
     "dataset_path": str(DATASET_PATH),
     "holdout_year": split.holdout_year,
     "feature_count": len(FEATURE_COLUMNS),
     "excluded_features": EXCLUDED_RISK_FEATURES,
+    "smoke_run": args.smoke,
     "best_params": study.best_params,
     "mean_validation_average_precision": study.best_value,
     "device": str(model.device),
@@ -203,6 +222,9 @@ run_metadata = {
     "patience": args.patience,
     "batch_size": model.batch_size,
     "stopping_tolerance": model.tolerance,
+    "test_metrics": metrics.to_dict(),
+    "seed": args.seed,
+    "command": " ".join(sys.argv),
 }
 (RUN_DIR / "run.json").write_text(json.dumps(run_metadata, indent=2))
 

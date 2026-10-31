@@ -56,8 +56,8 @@ def tune_model(
                 transformed_valid = preprocessor.transform(X_valid)
 
             model = model_factory(params, random_state + fold_number)
-            train_labels = np.asarray(y_train)
-            validation_labels = np.asarray(y_valid)
+            train_labels = np.ascontiguousarray(np.asarray(y_train))
+            validation_labels = np.ascontiguousarray(np.asarray(y_valid))
             if fit_model is None:
                 model.fit(transformed_train, train_labels)
             else:

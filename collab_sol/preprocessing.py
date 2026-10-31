@@ -9,8 +9,10 @@ from sklearn.impute import MissingIndicator, SimpleImputer
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import (
     FunctionTransformer,
+    OneHotEncoder,
     OrdinalEncoder,
     QuantileTransformer,
+    StandardScaler,
 )
 
 MISSING_LEVEL = "__missing__"
@@ -64,4 +66,37 @@ def make_ft_transformer_preprocessor(
             ),
         ],
         sparse_threshold=0.0,
+    )
+
+
+def make_one_hot_preprocessor(
+    numeric_features: list[str],
+    categorical_features: list[str],
+    *,
+    scale_numeric: bool,
+) -> ColumnTransformer:
+    """Build fold-fitted numeric imputation and categorical one-hot encoding."""
+
+    numeric_steps: list[object] = [
+        SimpleImputer(strategy="median", add_indicator=True)
+    ]
+    if scale_numeric:
+        numeric_steps.append(StandardScaler())
+
+    return ColumnTransformer(
+        [
+            ("numeric", make_pipeline(*numeric_steps), numeric_features),
+            (
+                "categorical",
+                make_pipeline(
+                    SimpleImputer(strategy="most_frequent"),
+                    OneHotEncoder(
+                        handle_unknown="ignore",
+                        dtype=np.float32,  # pyright: ignore[reportArgumentType]
+                    ),
+                ),
+                categorical_features,
+            ),
+        ],
+        sparse_threshold=1.0,
     )

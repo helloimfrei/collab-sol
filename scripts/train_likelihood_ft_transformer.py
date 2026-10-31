@@ -1,4 +1,4 @@
-"""Tune and evaluate Lucas Campa's FT-Transformer risk model.
+"""Tune and evaluate Lucas Campa's FT-Transformer crash-likelihood model.
 
 The script uses the same expanding temporal folds, average-precision objective,
 2024 holdout, feature set, and report format as the other risk models.
@@ -44,7 +44,9 @@ DATASET_PATH = args.dataset.resolve()
 if args.output_dir is None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     suffix = "_smoke" if args.smoke else ""
-    args.output_dir = PACKAGE_ROOT / "runs" / f"ft_transformer_{timestamp}{suffix}"
+    args.output_dir = (
+        PACKAGE_ROOT / "runs" / f"likelihood_ft_transformer_{timestamp}{suffix}"
+    )
 RUN_DIR = args.output_dir.resolve()
 
 if not DATASET_PATH.is_file():
@@ -216,7 +218,7 @@ study = tune_model(
     fit_model=fit_model,
     n_trials=args.trials,
     random_state=args.seed,
-    study_name="ft_transformer_risk",
+    study_name="incident_likelihood_ft_transformer",
 )
 study.trials_dataframe().to_csv(RUN_DIR / "optuna_trials.csv", index=False)
 print("Mean validation AP:", study.best_value)
@@ -257,6 +259,7 @@ if model.network_ is None:
 torch.save(model.network_.state_dict(), RUN_DIR / "model.pt")
 
 run_metadata = {
+    "task": "incident_likelihood",
     "model": type(model).__name__,
     "adapted_from": (
         "https://github.com/lucascampa/crossings/commit/"
