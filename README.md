@@ -135,13 +135,13 @@ Install every model dependency and smoke-test the complete panel:
 
 ```bash
 uv sync --extra models
-uv run --extra models python scripts/train_likelihood_models.py --smoke
+uv run python scripts/train_likelihood_models.py --smoke
 ```
 
 On the Linux GPU machine, run the complete comparison with:
 
 ```bash
-uv run --extra models python scripts/train_likelihood_models.py \
+uv run python scripts/train_likelihood_models.py \
   --require-cuda \
   --xgboost-device cuda \
   --trials 20
@@ -164,7 +164,7 @@ The shared estimator is available as
 
 ```bash
 uv sync --extra dev --extra models
-uv run --extra dev --extra models marimo edit notebooks/mlp_training.py
+uv run marimo edit notebooks/mlp_training.py
 ```
 
 The notebook uses CUDA mixed precision when available and otherwise falls back
@@ -174,7 +174,7 @@ For a non-interactive run without Marimo:
 
 ```bash
 uv sync --extra models
-uv run --extra models python scripts/train_likelihood_mlp.py --require-cuda
+uv run python scripts/train_likelihood_mlp.py --require-cuda
 ```
 
 The script accepts `--trials`, `--max-epochs`, `--patience`, `--dataset`, and
@@ -193,11 +193,11 @@ final report as the MLP.
 uv sync --extra models
 
 # Quick end-to-end check
-uv run --extra models python scripts/train_likelihood_ft_transformer.py \
+uv run python scripts/train_likelihood_ft_transformer.py \
   --smoke --require-cuda
 
 # Full search on the default final dataset
-uv run --extra models python scripts/train_likelihood_ft_transformer.py \
+uv run python scripts/train_likelihood_ft_transformer.py \
   --require-cuda --trials 20
 ```
 
