@@ -34,6 +34,7 @@ def build_xgboost_classifier(
     random_state: int,
     device: str = "cpu",
     n_jobs: int = -1,
+    early_stopping_rounds: int | None = 50,
 ):
     """Build the histogram-based XGBoost likelihood model."""
 
@@ -50,5 +51,6 @@ def build_xgboost_classifier(
         tree_method="hist",
         device=device,
         n_jobs=n_jobs,
+        early_stopping_rounds=early_stopping_rounds,
         random_state=random_state,
     )

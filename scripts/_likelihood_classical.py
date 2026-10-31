@@ -32,6 +32,7 @@ def main(model_name: str) -> None:
         choices=["cpu", "cuda"],
         default="cpu",
     )
+    parser.add_argument("--xgboost-early-stopping-rounds", type=int, default=50)
     parser.add_argument(
         "--smoke",
         action="store_true",
@@ -209,12 +210,17 @@ def main(model_name: str) -> None:
                 random_state=random_state,
             )
         if model_name == "xgboost":
-            return build_xgboost_classifier(
+            model = build_xgboost_classifier(
                 params,
                 random_state=random_state,
                 device=args.xgboost_device,
                 n_jobs=args.n_jobs,
+                early_stopping_rounds=(
+                    10 if args.smoke else args.xgboost_early_stopping_rounds
+                ),
             )
+            setattr(model, "tuned_params_", dict(params))
+            return model
         if model_name == "isolation_forest":
             return IsolationForestRiskModel(
                 **params,
@@ -223,6 +229,20 @@ def main(model_name: str) -> None:
             )
         raise ValueError(f"Unsupported model: {model_name}")
 
+    xgboost_best_rounds: dict[str, list[int]] = {}
+
+    def fit_xgboost(model, X_train, y_train, X_valid, y_valid):
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_valid, y_valid)],
+            verbose=False,
+        )
+        key = json.dumps(getattr(model, "tuned_params_"), sort_keys=True)
+        xgboost_best_rounds.setdefault(key, []).append(
+            int(model.best_iteration) + 1
+        )
+
     study = tune_model(
         model_factory=build_model,
         suggest_params=suggest_params,
@@ -230,10 +250,11 @@ def main(model_name: str) -> None:
         y=y,
         split=split,
         preprocessor_factory=new_preprocessor,
+        fit_model=fit_xgboost if model_name == "xgboost" else None,
         n_trials=args.trials,
         random_state=args.seed,
         study_name=f"likelihood_{model_name}",
-        cache_preprocessing=model_name == "logistic_regression",
+        cache_preprocessing=True,
         verbose=True,
     )
     study.trials_dataframe().to_csv(run_dir / "optuna_trials.csv", index=False)
@@ -248,7 +269,24 @@ def main(model_name: str) -> None:
     )
     X_test = preprocessor.transform(X.iloc[test_rows])
 
-    model = build_model(study.best_params, random_state=args.seed)
+    final_params = dict(study.best_params)
+    best_rounds = None
+    if model_name == "xgboost":
+        best_key = json.dumps(study.best_params, sort_keys=True)
+        best_rounds = xgboost_best_rounds[best_key]
+        final_params["n_estimators"] = max(
+            1,
+            int(round(float(np.median(best_rounds)))),
+        )
+        model = build_xgboost_classifier(
+            final_params,
+            random_state=args.seed,
+            device=args.xgboost_device,
+            n_jobs=args.n_jobs,
+            early_stopping_rounds=None,
+        )
+    else:
+        model = build_model(final_params, random_state=args.seed)
     model.fit(X_development, y.iloc[development_rows].to_numpy())
     metrics = generate_risk_report(
         model,
@@ -263,7 +301,7 @@ def main(model_name: str) -> None:
     score_semantics = {
         "logistic_regression": "uncalibrated estimated incident probability",
         "xgboost": "uncalibrated weighted-classifier ranking score",
-        "isolation_forest": "training-distribution anomaly percentile",
+        "isolation_forest": "training-reference anomaly percentile",
     }[model_name]
     metadata = {
         "task": "incident_likelihood",
@@ -281,6 +319,22 @@ def main(model_name: str) -> None:
         "test_metrics": metrics.to_dict(),
         "score_semantics": score_semantics,
         "n_trials": args.trials,
+        "xgboost_best_rounds_per_fold": best_rounds,
+        "xgboost_final_n_estimators": (
+            final_params.get("n_estimators")
+            if model_name == "xgboost"
+            else None
+        ),
+        "xgboost_early_stopping_rounds": (
+            args.xgboost_early_stopping_rounds
+            if model_name == "xgboost"
+            else None
+        ),
+        "isolation_score_reference_size": (
+            getattr(model, "score_reference_size")
+            if model_name == "isolation_forest"
+            else None
+        ),
         "seed": args.seed,
         "python_version": platform.python_version(),
         "command": " ".join(sys.argv),

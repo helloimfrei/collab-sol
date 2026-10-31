@@ -171,6 +171,13 @@ million rows. Optuna tunes regularization strength, L1/L2 penalty, and optional
 class balancing. Fold-fitted one-hot preprocessing is cached across trials, and
 the runner prints fold AP and elapsed time while it works.
 
+XGBoost uses fold validation for early stopping and refits the selected
+configuration for the median best tree count. Isolation Forest builds its
+anomaly-percentile reference from at most 50,000 deterministic training rows;
+this preserves score ordering while avoiding an unnecessary pass over every
+training row. Both models cache fold preprocessing across trials and report
+fold AP and elapsed time.
+
 ### MLP details
 
 [`notebooks/mlp_training.py`](notebooks/mlp_training.py) is a Marimo notebook

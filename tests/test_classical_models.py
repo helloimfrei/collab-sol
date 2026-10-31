@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.sparse import csr_matrix
 from sklearn.linear_model import SGDClassifier
 
 from collab_sol.models.anomaly import IsolationForestRiskModel
@@ -27,13 +28,16 @@ def test_isolation_forest_returns_anomaly_percentiles() -> None:
     model = IsolationForestRiskModel(
         n_estimators=20,
         max_samples=64,
+        score_reference_size=32,
         random_state=42,
     )
 
-    assert model.fit(training) is model
-    probabilities = model.predict_proba(evaluation)
+    assert model.fit(csr_matrix(training)) is model
+    probabilities = model.predict_proba(csr_matrix(evaluation))
 
     assert probabilities.shape == (5, 2)
+    assert model.training_anomaly_scores_ is not None
+    assert len(model.training_anomaly_scores_) == 32
     assert ((probabilities >= 0) & (probabilities <= 1)).all()
     assert np.allclose(probabilities.sum(axis=1), 1.0)
     assert probabilities[-1, 1] > probabilities[:-1, 1].mean()
