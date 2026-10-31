@@ -212,7 +212,7 @@ def main(model_name: str) -> None:
                 classifier = import_module("xgboost").XGBClassifier
             except (ImportError, AttributeError) as error:
                 raise ImportError(
-                    "Install XGBoost with `uv sync --extra classical`."
+                    "Install model dependencies with `uv sync --extra models`."
                 ) from error
             return classifier(
                 **params,

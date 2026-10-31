@@ -134,16 +134,14 @@ scripts/train_likelihood_ft_transformer.py
 Install every model dependency and smoke-test the complete panel:
 
 ```bash
-uv sync --extra classical --extra gpu --extra transformer
-uv run --extra classical --extra gpu --extra transformer \
-  python scripts/train_likelihood_models.py --smoke
+uv sync --extra models
+uv run --extra models python scripts/train_likelihood_models.py --smoke
 ```
 
 On the Linux GPU machine, run the complete comparison with:
 
 ```bash
-uv run --extra classical --extra gpu --extra transformer \
-  python scripts/train_likelihood_models.py \
+uv run --extra models python scripts/train_likelihood_models.py \
   --require-cuda \
   --xgboost-device cuda \
   --trials 20
@@ -165,8 +163,8 @@ The shared estimator is available as
 `from collab_sol.models import TorchMLPClassifier`.
 
 ```bash
-uv sync --extra dev --extra gpu
-uv run --extra dev --extra gpu marimo edit notebooks/mlp_training.py
+uv sync --extra dev --extra models
+uv run --extra dev --extra models marimo edit notebooks/mlp_training.py
 ```
 
 The notebook uses CUDA mixed precision when available and otherwise falls back
@@ -175,8 +173,8 @@ to CPU. Confirm `torch.cuda.is_available()` is `True` before starting a GPU run.
 For a non-interactive run without Marimo:
 
 ```bash
-uv sync --extra gpu
-uv run --extra gpu python scripts/train_likelihood_mlp.py --require-cuda
+uv sync --extra models
+uv run --extra models python scripts/train_likelihood_mlp.py --require-cuda
 ```
 
 The script accepts `--trials`, `--max-epochs`, `--patience`, `--dataset`, and
@@ -192,14 +190,14 @@ numeric values, validation-AP early stopping, and the same temporal tuner and
 final report as the MLP.
 
 ```bash
-uv sync --extra transformer
+uv sync --extra models
 
 # Quick end-to-end check
-uv run --extra transformer python scripts/train_likelihood_ft_transformer.py \
+uv run --extra models python scripts/train_likelihood_ft_transformer.py \
   --smoke --require-cuda
 
 # Full search on the default final dataset
-uv run --extra transformer python scripts/train_likelihood_ft_transformer.py \
+uv run --extra models python scripts/train_likelihood_ft_transformer.py \
   --require-cuda --trials 20
 ```
 

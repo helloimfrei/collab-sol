@@ -107,7 +107,6 @@ name = "collab-sol"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "joblib" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -118,10 +117,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-classical = [
-    { name = "xgboost", version = "3.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "xgboost", version = "3.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-]
 dev = [
     { name = "marimo" },
     { name = "pyright" },
@@ -131,17 +126,17 @@ explain = [
     { name = "shap", version = "0.51.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "shap", version = "0.53.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-gpu = [
-    { name = "torch" },
-]
-transformer = [
+models = [
+    { name = "joblib" },
     { name = "rtdl-revisiting-models" },
     { name = "torch" },
+    { name = "xgboost", version = "3.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "xgboost", version = "3.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "joblib" },
+    { name = "joblib", marker = "extra == 'models'" },
     { name = "marimo", marker = "extra == 'dev'" },
     { name = "matplotlib" },
     { name = "numpy" },
@@ -150,14 +145,13 @@ requires-dist = [
     { name = "pyarrow" },
     { name = "pyright", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
-    { name = "rtdl-revisiting-models", marker = "extra == 'transformer'" },
+    { name = "rtdl-revisiting-models", marker = "extra == 'models'" },
     { name = "scikit-learn" },
     { name = "shap", marker = "extra == 'explain'" },
-    { name = "torch", marker = "extra == 'gpu'" },
-    { name = "torch", marker = "extra == 'transformer'" },
-    { name = "xgboost", marker = "extra == 'classical'" },
+    { name = "torch", marker = "extra == 'models'" },
+    { name = "xgboost", marker = "extra == 'models'" },
 ]
-provides-extras = ["dev", "explain", "gpu", "transformer", "classical"]
+provides-extras = ["dev", "explain", "models"]
 
 [[package]]
 name = "colorama"

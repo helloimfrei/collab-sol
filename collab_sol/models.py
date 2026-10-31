@@ -18,8 +18,8 @@ try:
     from torch.utils.data import DataLoader, TensorDataset
 except ImportError as error:
     raise ImportError(
-        "Install the PyTorch model dependencies with "
-        "`uv sync --extra gpu` or `pip install '.[gpu]'`."
+        "Install model dependencies with "
+        "`uv sync --extra models` or `pip install '.[models]'`."
     ) from error
 
 
@@ -282,9 +282,8 @@ class FTTransformerClassifier:
             ).FTTransformer
         except (ImportError, AttributeError) as error:
             raise ImportError(
-                "Install the FT-Transformer dependencies with "
-                "`uv sync --extra transformer` or "
-                "`pip install '.[transformer]'`."
+                "Install model dependencies with "
+                "`uv sync --extra models` or `pip install '.[models]'`."
             ) from error
 
         kwargs = transformer_class.get_default_kwargs(n_blocks=self.n_blocks)

@@ -7,7 +7,6 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
       "numpy",
       "matplotlib",
-      "joblib",
       "optuna",
       "pandas==2.2.3",
       "pyarrow",
@@ -31,17 +30,12 @@ dev = [
 explain = [
     "shap",
 ]
-gpu = [
-    "torch",
-]
-transformer = [
+models = [
+    "joblib",
     "rtdl-revisiting-models",
     "torch",
-]
-classical = [
     "xgboost",
 ]
-
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
