@@ -237,7 +237,9 @@ run_metadata = {
     "excluded_features": EXCLUDED_RISK_FEATURES,
     "severity_classes": SEVERITY_CLASSES,
     "severity_weights": SEVERITY_WEIGHTS,
-    "severity_score_definition": "P(injury) + 2 * P(fatal)",
+    "severity_score_definition": (
+        "P(property_damage_only) + 2 * P(injury) + 3 * P(fatal)"
+    ),
     "smoke_run": args.smoke,
     "best_params": study.best_params,
     "mean_validation_multiclass_log_loss": study.best_value,

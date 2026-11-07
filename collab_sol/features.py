@@ -12,7 +12,7 @@ SEVERITY_CODES = {
     class_name: class_code
     for class_code, class_name in enumerate(SEVERITY_CLASSES)
 }
-SEVERITY_WEIGHTS = (0.0, 1.0, 2.0)
+SEVERITY_WEIGHTS = (1.0, 2.0, 3.0)
 
 EXCLUDED_RISK_FEATURES = {
     "latitude": "Near-unique crossing coordinate that can act like an ID.",

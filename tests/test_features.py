@@ -36,7 +36,7 @@ def test_severity_classes_have_fixed_ordinal_codes_and_weights() -> None:
         "injury": 1,
         "fatal": 2,
     }
-    assert SEVERITY_WEIGHTS == (0.0, 1.0, 2.0)
+    assert SEVERITY_WEIGHTS == (1.0, 2.0, 3.0)
 
 
 def test_ft_preprocessor_puts_category_codes_last() -> None:

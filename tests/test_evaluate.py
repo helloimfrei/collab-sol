@@ -112,7 +112,7 @@ def test_severity_metrics_use_three_class_probabilities() -> None:
     assert metrics.multiclass_log_loss > 0
     assert metrics.macro_f1 == pytest.approx(1.0)
     assert metrics.ordinal_mae == pytest.approx(0.0)
-    assert scores == pytest.approx([0.2, 1.0, 1.8])
+    assert scores == pytest.approx([1.2, 2.0, 2.8])
 
 
 def test_severity_report_writes_probabilities_metrics_and_budgets(tmp_path) -> None:

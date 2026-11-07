@@ -8,6 +8,7 @@ from importlib import import_module
 from pathlib import Path
 
 import numpy as np
+from collab_sol.features import SEVERITY_CLASSES, SEVERITY_WEIGHTS
 from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
@@ -18,12 +19,8 @@ from sklearn.metrics import (
 )
 
 DEFAULT_INSPECTION_BUDGETS = (10, 50, 100, 500, 1_000, 5_000, 10_000)
-DEFAULT_SEVERITY_CLASSES = (
-    "property_damage_only",
-    "injury",
-    "fatal",
-)
-DEFAULT_SEVERITY_WEIGHTS = (0.0, 1.0, 2.0)
+DEFAULT_SEVERITY_CLASSES = SEVERITY_CLASSES
+DEFAULT_SEVERITY_WEIGHTS = SEVERITY_WEIGHTS
 
 
 @dataclass(frozen=True)
