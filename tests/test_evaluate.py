@@ -7,8 +7,12 @@ import pytest
 
 from collab_sol.evaluate import (
     _inspection_budget_rows,
+    _severity_budget_rows,
     evaluate_binary_risk,
+    evaluate_severity,
+    expected_severity,
     generate_risk_report,
+    generate_severity_report,
 )
 
 
@@ -90,3 +94,70 @@ def test_inspection_budgets_use_absolute_top_counts() -> None:
 
     assert all("crossings_reviewed" not in row for row in rows)
     assert [row["incident_crossings_captured"] for row in rows] == [1, 1, 2, 3, 4]
+
+
+def test_severity_metrics_use_three_class_probabilities() -> None:
+    labels = np.array([0, 1, 2])
+    probabilities = np.array(
+        [
+            [0.8, 0.2, 0.0],
+            [0.1, 0.8, 0.1],
+            [0.0, 0.2, 0.8],
+        ]
+    )
+
+    metrics = evaluate_severity(labels, probabilities)
+    scores = expected_severity(probabilities)
+
+    assert metrics.multiclass_log_loss > 0
+    assert metrics.macro_f1 == pytest.approx(1.0)
+    assert metrics.ordinal_mae == pytest.approx(0.0)
+    assert scores == pytest.approx([0.2, 1.0, 1.8])
+
+
+def test_severity_report_writes_probabilities_metrics_and_budgets(tmp_path) -> None:
+    labels = np.array([0, 1, 2, 2])
+    probabilities = np.array(
+        [
+            [0.9, 0.1, 0.0],
+            [0.1, 0.8, 0.1],
+            [0.0, 0.1, 0.9],
+            [0.1, 0.2, 0.7],
+        ]
+    )
+
+    metrics = generate_severity_report(
+        FixedProbabilityModel(probabilities),
+        np.zeros((4, 1)),
+        labels,
+        output_dir=tmp_path,
+        row_ids=np.array(["A", "B", "C", "D"]),
+    )
+
+    assert metrics.macro_f1 == pytest.approx(1.0)
+    for filename in (
+        "metrics.csv",
+        "severity_scores.csv",
+        "per_class_metrics.csv",
+        "confusion_matrix.csv",
+        "severity_budget.csv",
+    ):
+        assert (tmp_path / filename).exists()
+
+    with (tmp_path / "severity_budget.csv").open() as file:
+        budget = list(csv.DictReader(file))[0]
+    assert int(budget["severity_review_budget_incidents"]) == 4
+    assert int(budget["fatal_incidents_captured"]) == 2
+    assert int(budget["injury_or_fatal_incidents_captured"]) == 3
+
+
+def test_severity_budget_prioritizes_expected_severity() -> None:
+    labels = np.zeros(100, dtype=int)
+    labels[:5] = [2, 2, 1, 1, 0]
+    scores = np.linspace(2.0, 0.0, 100)
+
+    rows = _severity_budget_rows(labels, scores)
+
+    assert rows[0]["severity_review_budget_incidents"] == 10
+    assert rows[0]["fatal_incidents_captured"] == 2
+    assert rows[0]["injury_or_fatal_incidents_captured"] == 4

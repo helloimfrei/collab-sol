@@ -7,6 +7,12 @@ from collections.abc import Sequence
 ID_COLUMNS = ("crossingid", "asof_year")
 TARGET_COLUMNS = ("incident", "severity_target")
 FIRST_CATEGORICAL_COLUMN = "reportingagencytypecode"
+SEVERITY_CLASSES = ("property_damage_only", "injury", "fatal")
+SEVERITY_CODES = {
+    class_name: class_code
+    for class_code, class_name in enumerate(SEVERITY_CLASSES)
+}
+SEVERITY_WEIGHTS = (0.0, 1.0, 2.0)
 
 EXCLUDED_RISK_FEATURES = {
     "latitude": "Near-unique crossing coordinate that can act like an ID.",

@@ -10,10 +10,20 @@ from pathlib import Path
 import numpy as np
 from sklearn.metrics import (
     average_precision_score,
+    confusion_matrix,
+    f1_score,
+    log_loss,
+    precision_recall_fscore_support,
     precision_recall_curve,
 )
 
 DEFAULT_INSPECTION_BUDGETS = (10, 50, 100, 500, 1_000, 5_000, 10_000)
+DEFAULT_SEVERITY_CLASSES = (
+    "property_damage_only",
+    "injury",
+    "fatal",
+)
+DEFAULT_SEVERITY_WEIGHTS = (0.0, 1.0, 2.0)
 
 
 @dataclass(frozen=True)
@@ -22,6 +32,18 @@ class RiskMetrics:
 
     prevalence: float
     average_precision: float
+
+    def to_dict(self) -> dict[str, float | int]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SeverityMetrics:
+    """Metrics for three-class conditional-severity probabilities."""
+
+    multiclass_log_loss: float
+    macro_f1: float
+    ordinal_mae: float
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -77,6 +99,47 @@ def evaluate_binary_risk(
     )
 
 
+def multiclass_log_loss(y_true, probabilities: np.ndarray) -> float:
+    """Score multiclass probabilities for minimization during tuning."""
+
+    labels, values = _validated_severity_inputs(y_true, probabilities)
+    return float(log_loss(labels, values, labels=np.arange(values.shape[1])))
+
+
+def expected_severity(
+    probabilities: np.ndarray,
+    *,
+    class_weights: tuple[float, ...] = DEFAULT_SEVERITY_WEIGHTS,
+) -> np.ndarray:
+    """Return the probability-weighted ordinal severity score."""
+
+    values = np.asarray(probabilities, dtype=float)
+    weights = np.asarray(class_weights, dtype=float)
+    if values.ndim != 2 or values.shape[1] != len(weights):
+        raise ValueError("Probability columns must match the severity weights.")
+    if not np.isfinite(weights).all():
+        raise ValueError("Severity weights must be finite.")
+    values = _validated_probability_matrix(values)
+    return values @ weights
+
+
+def evaluate_severity(
+    y_true,
+    probabilities: np.ndarray,
+) -> SeverityMetrics:
+    """Evaluate conditional-severity probabilities and ordinal predictions."""
+
+    labels, values = _validated_severity_inputs(y_true, probabilities)
+    predicted = values.argmax(axis=1)
+    return SeverityMetrics(
+        multiclass_log_loss=float(
+            log_loss(labels, values, labels=np.arange(values.shape[1]))
+        ),
+        macro_f1=float(f1_score(labels, predicted, average="macro")),
+        ordinal_mae=float(np.mean(np.abs(labels - predicted))),
+    )
+
+
 def generate_risk_report(
     model,
     X,
@@ -122,6 +185,149 @@ def generate_risk_report(
     return metrics
 
 
+def generate_severity_report(
+    model,
+    X,
+    y_true,
+    *,
+    output_dir: str | Path,
+    row_ids=None,
+    class_names: tuple[str, ...] = DEFAULT_SEVERITY_CLASSES,
+    class_weights: tuple[float, ...] = DEFAULT_SEVERITY_WEIGHTS,
+) -> SeverityMetrics:
+    """Save multiclass metrics, probabilities, and severity-budget results."""
+
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+
+    probabilities = np.asarray(model.predict_proba(X), dtype=float)
+    labels, probabilities = _validated_severity_inputs(y_true, probabilities)
+    if len(class_names) != probabilities.shape[1]:
+        raise ValueError("Class names must match the probability columns.")
+    metrics = evaluate_severity(labels, probabilities)
+    predicted = probabilities.argmax(axis=1)
+    severity_scores = expected_severity(
+        probabilities,
+        class_weights=class_weights,
+    )
+    identifiers = _validated_row_ids(row_ids, len(labels))
+
+    with (output / "metrics.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["metric", "value"])
+        writer.writerows(metrics.to_dict().items())
+
+    probability_columns = [f"probability_{name}" for name in class_names]
+    with (output / "severity_scores.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            [
+                "row_id",
+                "actual_class",
+                "predicted_class",
+                "severity_score",
+                *probability_columns,
+            ]
+        )
+        for row_id, actual, prediction, score, row_probabilities in zip(
+            identifiers,
+            labels,
+            predicted,
+            severity_scores,
+            probabilities,
+        ):
+            writer.writerow(
+                [
+                    row_id,
+                    class_names[actual],
+                    class_names[prediction],
+                    score,
+                    *row_probabilities,
+                ]
+            )
+
+    per_class = precision_recall_fscore_support(
+        labels,
+        predicted,
+        labels=np.arange(len(class_names)),
+        zero_division=0,  # pyright: ignore[reportArgumentType]
+    )
+    precision = np.asarray(per_class[0], dtype=float)
+    recall = np.asarray(per_class[1], dtype=float)
+    f1 = np.asarray(per_class[2], dtype=float)
+    support = np.asarray(per_class[3], dtype=int)
+    with (output / "per_class_metrics.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["class", "precision", "recall", "f1", "support"])
+        writer.writerows(
+            [class_name, class_precision, class_recall, class_f1, class_support]
+            for class_name, class_precision, class_recall, class_f1, class_support
+            in zip(class_names, precision, recall, f1, support)
+        )
+
+    matrix = confusion_matrix(
+        labels,
+        predicted,
+        labels=np.arange(len(class_names)),
+    )
+    with (output / "confusion_matrix.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["actual_class", *class_names])
+        for class_name, row in zip(class_names, matrix):
+            writer.writerow([class_name, *row])
+
+    budget_rows = _severity_budget_rows(
+        labels,
+        severity_scores,
+        class_weights=class_weights,
+    )
+    with (output / "severity_budget.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(budget_rows[0]))
+        writer.writeheader()
+        writer.writerows(budget_rows)
+    return metrics
+
+
+def _validated_severity_inputs(
+    y_true,
+    probabilities: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    labels = np.asarray(y_true)
+    values = np.asarray(probabilities, dtype=float)
+    if labels.ndim != 1 or labels.size == 0:
+        raise ValueError("Severity targets must be a non-empty one-dimensional array.")
+    if not np.issubdtype(labels.dtype, np.integer):
+        if not np.equal(labels, labels.astype(int)).all():
+            raise ValueError("Severity targets must be integer class codes.")
+    labels = labels.astype(int)
+    values = _validated_probability_matrix(values)
+    if len(labels) != len(values):
+        raise ValueError("Targets and probabilities must have the same length.")
+    if labels.min() < 0 or labels.max() >= values.shape[1]:
+        raise ValueError("Severity targets are outside the probability columns.")
+    return labels, values
+
+
+def _validated_probability_matrix(values: np.ndarray) -> np.ndarray:
+    if values.ndim != 2 or values.shape[1] < 2:
+        raise ValueError("Multiclass probabilities must have at least two columns.")
+    if not np.isfinite(values).all() or ((values < 0) | (values > 1)).any():
+        raise ValueError("Probabilities must be finite values between 0 and 1.")
+    row_sums = values.sum(axis=1, keepdims=True)
+    if not np.allclose(row_sums, 1.0, atol=1e-6):
+        raise ValueError("Each probability row must sum to 1.")
+    return values / row_sums
+
+
+def _validated_row_ids(row_ids, size: int) -> np.ndarray:
+    if row_ids is None:
+        return np.arange(size)
+    identifiers = np.asarray(row_ids)
+    if identifiers.ndim != 1 or len(identifiers) != size:
+        raise ValueError("row_ids must be one-dimensional and match y_true.")
+    return identifiers
+
+
 def _inspection_budget_rows(
     labels: np.ndarray,
     positive: np.ndarray,
@@ -156,6 +362,60 @@ def _inspection_budget_rows(
                 "recall": recall,
                 "lift_over_random": lift,
                 "risk_score_cutoff": float(ranked_scores[reviewed - 1]),
+            }
+        )
+    return rows
+
+
+def _severity_budget_rows(
+    labels: np.ndarray,
+    severity_scores: np.ndarray,
+    *,
+    class_weights: tuple[float, ...] = DEFAULT_SEVERITY_WEIGHTS,
+) -> list[dict[str, float | int]]:
+    """Evaluate the highest expected-severity crash cases at fixed budgets."""
+
+    order = np.argsort(-severity_scores, kind="stable")
+    ranked_labels = labels[order]
+    ranked_scores = severity_scores[order]
+    weights = np.asarray(class_weights, dtype=float)
+    observed_severity = weights[ranked_labels]
+    fatal_class = len(weights) - 1
+    fatal = ranked_labels == fatal_class
+    serious = ranked_labels > 0
+    total_fatal = int(fatal.sum())
+    total_serious = int(serious.sum())
+    overall_mean = float(observed_severity.mean())
+
+    budgets = [
+        budget for budget in DEFAULT_INSPECTION_BUDGETS if budget <= len(labels)
+    ]
+    if not budgets:
+        budgets = [len(labels)]
+
+    rows = []
+    for budget in budgets:
+        fatal_captured = int(fatal[:budget].sum())
+        serious_captured = int(serious[:budget].sum())
+        mean_observed = float(observed_severity[:budget].mean())
+        rows.append(
+            {
+                "severity_review_budget_incidents": budget,
+                "fatal_incidents_captured": fatal_captured,
+                "fatal_precision": fatal_captured / budget,
+                "fatal_recall": (
+                    fatal_captured / total_fatal if total_fatal else 0.0
+                ),
+                "injury_or_fatal_incidents_captured": serious_captured,
+                "injury_or_fatal_precision": serious_captured / budget,
+                "injury_or_fatal_recall": (
+                    serious_captured / total_serious if total_serious else 0.0
+                ),
+                "mean_observed_severity": mean_observed,
+                "severity_lift_over_all_incidents": (
+                    mean_observed / overall_mean if overall_mean else 0.0
+                ),
+                "severity_score_cutoff": float(ranked_scores[budget - 1]),
             }
         )
     return rows

@@ -172,3 +172,29 @@ def test_tuner_can_cache_fold_preprocessing() -> None:
     )
 
     assert IdentityPreprocessor.fit_count == len(split.folds)
+
+
+def test_tuner_can_minimize_a_multiclass_metric() -> None:
+    frame = pd.DataFrame(
+        {
+            "feature": np.arange(12),
+            "year": [year for year in range(2018, 2024) for _ in range(2)],
+            "target": [0, 1] * 6,
+        }
+    )
+    split = make_expanding_temporal_split(frame, year_column="year")
+
+    study = tune_model(
+        model_factory=build_recording_model,
+        suggest_params=suggest_probability,
+        X=frame[["feature"]],
+        y=frame["target"],
+        split=split,
+        scorer=lambda _labels, probabilities: float(probabilities[:, 1].mean()),
+        direction="minimize",
+        metric_name="log loss",
+        n_trials=2,
+        enqueued_trials=[{"probability": 0.2}, {"probability": 0.8}],
+    )
+
+    assert study.best_params == {"probability": 0.2}

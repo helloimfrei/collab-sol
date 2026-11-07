@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Literal
 
 import numpy as np
 import optuna
@@ -21,6 +22,8 @@ def tune_model(
     preprocessor_factory=None,
     fit_model=None,
     scorer=binary_average_precision,
+    direction: Literal["maximize", "minimize"] = "maximize",
+    metric_name: str = "score",
     n_trials: int = 20,
     random_state: int = 42,
     study_name: str | None = None,
@@ -104,7 +107,8 @@ def tune_model(
             if verbose:
                 seconds = time.perf_counter() - fold_start
                 print(
-                    f"{prefix} | AP {fold_score:.4f} | {seconds:.1f} s",
+                    f"{prefix} | {metric_name} {fold_score:.4f} | "
+                    f"{seconds:.1f} s",
                     flush=True,
                 )
 
@@ -121,7 +125,7 @@ def tune_model(
 
     sampler = optuna.samplers.TPESampler(seed=random_state)
     study = optuna.create_study(
-        direction="maximize",
+        direction=direction,
         sampler=sampler,
         pruner=pruner,
         study_name=study_name,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from collab_sol.features import split_risk_feature_columns
+from collab_sol.features import SEVERITY_CODES, SEVERITY_WEIGHTS, split_risk_feature_columns
 from collab_sol.preprocessing import (
     make_ft_transformer_preprocessor,
     make_one_hot_preprocessor,
@@ -28,6 +28,15 @@ def test_shared_risk_features_drop_ids_targets_and_exclusions() -> None:
 
     assert numeric == ["B01003_E001"]
     assert categorical == ["reportingagencytypecode", "crossingclosed"]
+
+
+def test_severity_classes_have_fixed_ordinal_codes_and_weights() -> None:
+    assert SEVERITY_CODES == {
+        "property_damage_only": 0,
+        "injury": 1,
+        "fatal": 2,
+    }
+    assert SEVERITY_WEIGHTS == (0.0, 1.0, 2.0)
 
 
 def test_ft_preprocessor_puts_category_codes_last() -> None:

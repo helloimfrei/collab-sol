@@ -35,6 +35,7 @@ class TorchMLPClassifier:
         learning_rate: float,
         weight_decay: float,
         batch_size: int,
+        n_classes: int = 2,
         max_epochs: int = 50,
         patience: int = 5,
         tolerance: float = 5e-4,
@@ -46,6 +47,9 @@ class TorchMLPClassifier:
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.batch_size = batch_size
+        if n_classes < 2:
+            raise ValueError("n_classes must be at least 2.")
+        self.n_classes = n_classes
         self.max_epochs = max_epochs
         self.patience = patience
         self.tolerance = tolerance
@@ -73,7 +77,8 @@ class TorchMLPClassifier:
                 ]
             )
             layer_width = self.hidden_width
-        layers.append(nn.Linear(layer_width, 1))
+        output_width = 1 if self.n_classes == 2 else self.n_classes
+        layers.append(nn.Linear(layer_width, output_width))
         return nn.Sequential(*layers).to(self.device)
 
     def fit(self, X: Any, y: Any) -> Self:
@@ -84,9 +89,17 @@ class TorchMLPClassifier:
             torch.cuda.manual_seed_all(self.random_state)
 
         features = torch.from_numpy(self._dense_float32(X))
-        targets = torch.from_numpy(
-            np.asarray(y, dtype=np.float32).reshape(-1, 1)
-        )
+        if self.n_classes == 2:
+            target_values = np.asarray(y, dtype=np.float32).reshape(-1, 1)
+        else:
+            target_values = np.asarray(y, dtype=np.int64).reshape(-1)
+            if (
+                target_values.size == 0
+                or target_values.min() < 0
+                or target_values.max() >= self.n_classes
+            ):
+                raise ValueError("Targets are outside the configured classes.")
+        targets = torch.from_numpy(target_values)
         generator = torch.Generator().manual_seed(self.random_state)
         loader = DataLoader(
             TensorDataset(features, targets),
@@ -102,7 +115,11 @@ class TorchMLPClassifier:
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
-        loss_function = nn.BCEWithLogitsLoss()
+        loss_function: nn.Module
+        if self.n_classes == 2:
+            loss_function = nn.BCEWithLogitsLoss()
+        else:
+            loss_function = nn.CrossEntropyLoss()
         use_amp = self.device.type == "cuda"
         scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
@@ -127,7 +144,7 @@ class TorchMLPClassifier:
                     enabled=use_amp,
                 ):
                     logits = network(batch_features)
-                    loss = loss_function(logits, batch_targets)
+                    loss = loss_function(logits.float(), batch_targets)
 
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -160,7 +177,7 @@ class TorchMLPClassifier:
         return self
 
     def predict_proba(self, X: Any) -> NDArray[np.float32]:
-        """Return two-column probabilities for the negative and positive classes."""
+        """Return one probability column per configured class."""
 
         if self.network_ is None:
             raise RuntimeError("Call fit before predict_proba.")
@@ -186,14 +203,17 @@ class TorchMLPClassifier:
                     enabled=self.device.type == "cuda",
                 ):
                     logits = self.network_(batch_features)
-                probabilities.append(
-                    torch.sigmoid(logits.float()).cpu().numpy().reshape(-1)
-                )
+                if self.n_classes == 2:
+                    batch_probabilities = torch.sigmoid(logits.float())
+                else:
+                    batch_probabilities = torch.softmax(logits.float(), dim=1)
+                probabilities.append(batch_probabilities.cpu().numpy())
 
-        positive = np.concatenate(probabilities)
-        return np.column_stack([1.0 - positive, positive]).astype(
-            np.float32, copy=False
-        )
+        combined = np.concatenate(probabilities)
+        if self.n_classes == 2:
+            positive = combined.reshape(-1)
+            combined = np.column_stack([1.0 - positive, positive])
+        return combined.astype(np.float32, copy=False)
 
 
 class FTTransformerClassifier:

@@ -5,7 +5,7 @@ Team models can use the utilities directly; the package provides:
 
 - expanding temporal cross-validation with a final untouched year;
 - Optuna hyperparameter tuning; and
-- continuous risk-score evaluation and reporting.
+- continuous risk-score and conditional-severity evaluation and reporting.
 
 It also contains the shared CUDA MLP and FT-Transformer used by the local
 training scripts.
@@ -79,8 +79,8 @@ print(study.best_params)
 
 By default, every trial is scored using average precision. The tuner fits the
 same proposed parameter set on every temporal fold and maximizes its mean
-validation score. A different higher-is-better function can be passed through
-`scorer=`.
+validation score. Other objectives can be passed through `scorer=` and
+`direction=`; the severity models minimize multiclass log loss.
 
 For our 2019–2024 dataset, the validation years are 2020–2023. The tuner never
 receives 2024. After selecting the parameters, refit on all 2019–2023 rows and
@@ -106,6 +106,39 @@ and 10,000 ranked crossings. The budget table reports incident crossings
 captured, precision, recall, lift over prevalence, and the score cutoff. The
 report does not convert scores into yes/no predictions.
 
+## Train the conditional-severity MLP
+
+The severity model is trained only on rows where `incident == 1`. It predicts
+three conditional probabilities in this fixed order:
+
+```text
+property_damage_only, injury, fatal
+```
+
+The continuous severity score is expected ordinal severity:
+`P(injury) + 2 * P(fatal)`, ranging from 0 to 2. It is not combined with the
+likelihood score. `generate_severity_report` saves multiclass log loss, macro
+F1, ordinal MAE, per-class metrics, a confusion matrix, class probabilities,
+and `severity_budget.csv`.
+
+The budget report ranks crash cases by expected severity. At the top 10, 50,
+100, 500, and 1,000 cases, it reports fatal and injury-or-fatal capture,
+precision, recall, mean observed severity, lift over the full crash cohort, and
+the score cutoff. This is the severity analogue of the likelihood inspection
+table; it evaluates ranking quality among crashes rather than claiming which
+crossings will crash.
+
+```bash
+uv sync --extra models
+
+# Fast end-to-end check on the complete severity cohort
+uv run python scripts/train_severity_mlp.py --smoke
+
+# Full temporal search and untouched 2024 evaluation
+uv run python scripts/train_severity_mlp.py \
+  --require-cuda --trials 20
+```
+
 ## Data contract
 
 The input must already contain one row per crossing-year, `asof_year`, the
@@ -126,7 +159,7 @@ Colab workflow using logistic regression. To test another model, replace only
 ## Train the crash-likelihood models locally
 
 These scripts are specifically for the binary `incident` likelihood task. The
-future severity classifiers will use separate `train_severity_*` entry points.
+conditional-severity MLP uses the separate `train_severity_mlp.py` entry point.
 Every likelihood script uses the same 224 predictors, expanding temporal folds,
 mean validation AP objective, and untouched 2024 evaluation.
 
