@@ -158,14 +158,16 @@ else:
 
 def suggest_params(trial):
     return {
-        "hidden_width": trial.suggest_categorical("hidden_width", [64, 128, 256]),
-        "n_layers": trial.suggest_int("n_layers", 1, 3),
-        "dropout": trial.suggest_float("dropout", 0.0, 0.3),
+        "hidden_width": trial.suggest_categorical(
+            "hidden_width", [64, 128, 256, 512]
+        ),
+        "n_layers": trial.suggest_int("n_layers", 1, 4),
+        "dropout": trial.suggest_float("dropout", 0.0, 0.5),
         "learning_rate": trial.suggest_float(
-            "learning_rate", 1e-4, 3e-3, log=True
+            "learning_rate", 5e-5, 5e-3, log=True
         ),
         "weight_decay": trial.suggest_float(
-            "weight_decay", 1e-7, 1e-3, log=True
+            "weight_decay", 1e-8, 1e-2, log=True
         ),
     }
 

@@ -140,6 +140,11 @@ uv run python scripts/train_severity_mlp.py \
   --require-cuda --trials 20
 ```
 
+The severity MLP searches one to four hidden layers, widths from 64 to 512,
+dropout from 0 to 0.5, and log-scaled AdamW learning rate and weight decay.
+Full runs allow 50 epochs with five-epoch train-loss patience; the much shorter
+`--smoke` setting is only an integration check.
+
 ## Data contract
 
 The input must already contain one row per crossing-year, `asof_year`, the
