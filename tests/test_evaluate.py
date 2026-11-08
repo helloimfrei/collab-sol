@@ -140,6 +140,7 @@ def test_severity_report_writes_probabilities_metrics_and_budgets(tmp_path) -> N
         "severity_scores.csv",
         "per_class_metrics.csv",
         "confusion_matrix.csv",
+        "confusion_matrix.png",
         "severity_budget.csv",
     ):
         assert (tmp_path / filename).exists()

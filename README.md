@@ -118,8 +118,9 @@ property_damage_only, injury, fatal
 The continuous severity score is expected ordinal severity:
 `P(property damage only) + 2 * P(injury) + 3 * P(fatal)`, ranging from 1 to 3.
 It is not combined with the likelihood score. `generate_severity_report` saves
-multiclass log loss, macro F1, ordinal MAE, per-class metrics, a confusion
-matrix, class probabilities, and `severity_budget.csv`.
+multiclass log loss, macro F1, ordinal MAE, per-class metrics, confusion-matrix
+CSV and PNG files, class probabilities, and `severity_budget.csv`. The plotted
+matrix includes raw counts and row-normalized percentages.
 
 The budget report ranks crash cases by expected severity. At the top 10, 50,
 100, 500, and 1,000 cases, it reports fatal and injury-or-fatal capture,

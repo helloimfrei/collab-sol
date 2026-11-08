@@ -272,6 +272,11 @@ def generate_severity_report(
         writer.writerow(["actual_class", *class_names])
         for class_name, row in zip(class_names, matrix):
             writer.writerow([class_name, *row])
+    _save_severity_confusion_matrix(
+        matrix,
+        class_names,
+        output / "confusion_matrix.png",
+    )
 
     budget_rows = _severity_budget_rows(
         labels,
@@ -434,6 +439,56 @@ def _save_precision_recall_curve(
     axis.grid(alpha=0.3)
     figure.tight_layout()
     figure.savefig(output_path, dpi=200)
+    plt.close(figure)
+
+
+def _save_severity_confusion_matrix(
+    matrix: np.ndarray,
+    class_names: tuple[str, ...],
+    output_path: Path,
+) -> None:
+    """Save counts and actual-class percentages in one confusion-matrix plot."""
+
+    import matplotlib.pyplot as plt
+
+    row_totals = matrix.sum(axis=1, keepdims=True)
+    normalized = np.divide(
+        matrix,
+        row_totals,
+        out=np.zeros_like(matrix, dtype=float),
+        where=row_totals != 0,
+    )
+    display_names = [name.replace("_", " ").title() for name in class_names]
+
+    figure, axis = plt.subplots(figsize=(7, 6))
+    image = axis.imshow(normalized, cmap="Blues", vmin=0.0, vmax=1.0)
+    colorbar = figure.colorbar(image, ax=axis)
+    colorbar.set_label("Share of actual class")
+    axis.set(
+        xticks=np.arange(len(class_names)),
+        yticks=np.arange(len(class_names)),
+        xticklabels=display_names,
+        yticklabels=display_names,
+        xlabel="Predicted severity",
+        ylabel="Actual severity",
+        title="Conditional-severity confusion matrix",
+    )
+    axis.tick_params(axis="x", rotation=25)
+
+    for actual in range(len(class_names)):
+        for predicted in range(len(class_names)):
+            percentage = normalized[actual, predicted]
+            axis.text(
+                predicted,
+                actual,
+                f"{matrix[actual, predicted]:,}\n{percentage:.1%}",
+                ha="center",
+                va="center",
+                color="white" if percentage > 0.5 else "black",
+            )
+
+    figure.tight_layout()
+    figure.savefig(output_path, dpi=200, bbox_inches="tight")
     plt.close(figure)
 
 
