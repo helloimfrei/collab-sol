@@ -12,7 +12,7 @@ training scripts.
 
 Model code lives under `collab_sol/models/`:
 
-- `classical.py` — logistic-regression and XGBoost factories;
+- `classical.py` — linear and XGBoost classifier/regressor factories;
 - `anomaly.py` — the Isolation Forest ranking adapter; and
 - `neural.py` — the PyTorch MLP and FT-Transformer implementations.
 
@@ -79,8 +79,9 @@ print(study.best_params)
 
 By default, every trial is scored using average precision. The tuner fits the
 same proposed parameter set on every temporal fold and maximizes its mean
-validation score. Other objectives can be passed through `scorer=` and
-`direction=`; the severity models minimize multiclass log loss.
+validation score. Other objectives can be passed through `scorer=`,
+`direction=`, and `predict_model=`. The direct severity regressors use these
+arguments to minimize mean absolute error from `model.predict(...)`.
 
 For our 2019–2024 dataset, the validation years are 2020–2023. The tuner never
 receives 2024. After selecting the parameters, refit on all 2019–2023 rows and
@@ -106,7 +107,52 @@ and 10,000 ranked crossings. The budget table reports incident crossings
 captured, precision, recall, lift over prevalence, and the score cutoff. The
 report does not convert scores into yes/no predictions.
 
-## Train the conditional-severity MLP
+## Train direct conditional-severity regressors
+
+The current severity experiment treats the existing ordinal target as a direct
+score: property-damage-only = 1, injury = 2, and fatal = 3. Models train only
+on crash rows (`incident == 1`) and rank the held-out crash cases by their
+predicted 1--3 severity. Ridge is the appropriate linear baseline here;
+logistic regression is not used because it is a classifier.
+
+One script runs Ridge, XGBoost, the PyTorch MLP, or the Lucas-derived
+FT-Transformer through the same temporal folds:
+
+```bash
+uv sync --extra models
+
+# Integration checks
+uv run python scripts/train_severity_regression.py --model ridge --smoke
+uv run python scripts/train_severity_regression.py --model xgboost --smoke
+uv run python scripts/train_severity_regression.py --model mlp --smoke
+uv run python scripts/train_severity_regression.py --model ft_transformer --smoke
+
+# Example full search
+uv run python scripts/train_severity_regression.py \
+  --model mlp --require-cuda --trials 50
+```
+
+The primary output is `severity_budget.csv`, which reports fatal and
+injury-or-fatal capture among the top-ranked crash cases. The deliberately
+small metric output contains only test MAE and the MAE of an always-property-
+damage-only baseline. The run also saves the fold search, fitted preprocessor,
+model artifact, direct per-row severity scores, and provenance in `run.json`.
+
+To compare classification and regression fairly across all four model
+families, run the process-isolated panel. Each formulation receives its own
+50-trial search while using the same crash cohort, temporal folds, predictors,
+and untouched 2024 test set:
+
+```bash
+uv run python scripts/train_severity_models.py \
+  --trials 50 --require-cuda --xgboost-device cuda
+```
+
+The panel writes `model_comparison.csv` with continuous-severity MAE and the
+shared budget results. `hyperparameter_search_spaces.csv` lists every tuned
+parameter, distribution, bound, choice, step, and log-scale setting.
+
+## Legacy conditional-severity classifier
 
 The severity model is trained only on rows where `incident == 1`. It predicts
 three conditional probabilities in this fixed order:

@@ -21,6 +21,7 @@ def tune_model(
     split: TemporalSplit,
     preprocessor_factory=None,
     fit_model=None,
+    predict_model=None,
     scorer=binary_average_precision,
     direction: Literal["maximize", "minimize"] = "maximize",
     metric_name: str = "score",
@@ -33,12 +34,12 @@ def tune_model(
     cache_preprocessing: bool = False,
     verbose: bool = False,
 ) -> optuna.Study:
-    """Tune any probabilistic classifier without exposing the holdout.
+    """Tune any model without exposing the holdout.
 
-    ``model_factory(params, random_state)`` must return an object with
-    ``fit(X, y)`` and ``predict_proba(X)`` methods. Supply ``fit_model`` only
-    when the model needs validation data during fitting, such as for early
-    stopping or a custom neural-network training loop.
+    By default the returned model must provide ``fit(X, y)`` and
+    ``predict_proba(X)``. Regressors can supply ``predict_model`` to call
+    ``predict(X)`` instead. Supply ``fit_model`` only when the model needs
+    validation data during fitting, such as for early stopping.
     """
 
     if len(X) != len(y):
@@ -101,8 +102,12 @@ def tune_model(
                     transformed_valid,
                     validation_labels,
                 )
-            probabilities = model.predict_proba(transformed_valid)
-            fold_score = scorer(validation_labels, probabilities)
+            predictions = (
+                model.predict_proba(transformed_valid)
+                if predict_model is None
+                else predict_model(model, transformed_valid)
+            )
+            fold_score = scorer(validation_labels, predictions)
             fold_scores.append(fold_score)
             if verbose:
                 seconds = time.perf_counter() - fold_start

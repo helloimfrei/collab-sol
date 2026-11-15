@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 ID_COLUMNS = ("crossingid", "asof_year")
-TARGET_COLUMNS = ("incident", "severity_target")
+TARGET_COLUMNS = (
+    "incident",
+    "incident_count",
+    "severity_target",
+    "severity_ordinal",
+)
 FIRST_CATEGORICAL_COLUMN = "reportingagencytypecode"
 SEVERITY_CLASSES = ("property_damage_only", "injury", "fatal")
 SEVERITY_CODES = {
@@ -13,6 +18,7 @@ SEVERITY_CODES = {
     for class_code, class_name in enumerate(SEVERITY_CLASSES)
 }
 SEVERITY_WEIGHTS = (1.0, 2.0, 3.0)
+SEVERITY_VALUES = dict(zip(SEVERITY_CLASSES, SEVERITY_WEIGHTS, strict=True))
 
 EXCLUDED_RISK_FEATURES = {
     "latitude": "Near-unique crossing coordinate that can act like an ID.",

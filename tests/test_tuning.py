@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_absolute_error
 
 from collab_sol.splitting import make_expanding_temporal_split
 from collab_sol.tuning import tune_model
@@ -92,6 +94,33 @@ def test_tuner_accepts_an_ordinary_sklearn_model() -> None:
         X=frame[["feature"]],
         y=frame["target"],
         split=split,
+        n_trials=1,
+    )
+
+    assert len(study.trials) == 1
+
+
+def test_tuner_accepts_a_regressor_prediction_callback() -> None:
+    frame = pd.DataFrame(
+        {
+            "feature": np.arange(12),
+            "year": [year for year in range(2018, 2024) for _ in range(2)],
+            "target": [1.0, 2.0] * 6,
+        }
+    )
+    split = make_expanding_temporal_split(frame, year_column="year")
+
+    study = tune_model(
+        model_factory=lambda params, random_state: Ridge(**params),
+        suggest_params=lambda trial: {
+            "alpha": trial.suggest_float("alpha", 0.1, 1.0)
+        },
+        X=frame[["feature"]],
+        y=frame["target"],
+        split=split,
+        predict_model=lambda model, values: model.predict(values),
+        scorer=mean_absolute_error,
+        direction="minimize",
         n_trials=1,
     )
 

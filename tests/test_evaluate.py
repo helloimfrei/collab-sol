@@ -10,9 +10,12 @@ from collab_sol.evaluate import (
     _severity_budget_rows,
     evaluate_binary_risk,
     evaluate_severity,
+    evaluate_severity_regression,
     expected_severity,
     generate_risk_report,
     generate_severity_report,
+    generate_severity_regression_report,
+    severity_regression_mae,
 )
 
 
@@ -23,6 +26,15 @@ class FixedProbabilityModel:
     def predict_proba(self, X) -> np.ndarray:
         assert len(X) == len(self.probabilities)
         return self.probabilities
+
+
+class FixedRegressionModel:
+    def __init__(self, predictions: np.ndarray) -> None:
+        self.predictions = predictions
+
+    def predict(self, X) -> np.ndarray:
+        assert len(X) == len(self.predictions)
+        return self.predictions
 
 
 def test_binary_risk_metrics_evaluate_continuous_scores() -> None:
@@ -162,3 +174,40 @@ def test_severity_budget_prioritizes_expected_severity() -> None:
     assert rows[0]["severity_review_budget_incidents"] == 10
     assert rows[0]["fatal_incidents_captured"] == 2
     assert rows[0]["injury_or_fatal_incidents_captured"] == 4
+
+
+def test_severity_regression_report_is_minimal_and_budget_focused(
+    tmp_path,
+) -> None:
+    labels = np.array([1.0, 1.0, 2.0, 3.0])
+    predictions = np.array([0.5, 1.2, 2.4, 3.5])
+    model = FixedRegressionModel(predictions)
+
+    metrics = generate_severity_regression_report(
+        model,
+        np.zeros((4, 1)),
+        labels,
+        output_dir=tmp_path,
+        row_ids=np.array(["A", "B", "C", "D"]),
+    )
+
+    assert metrics.mean_absolute_error == pytest.approx(0.15)
+    assert metrics.constant_pdo_mean_absolute_error == pytest.approx(0.75)
+    assert severity_regression_mae(labels, predictions) == pytest.approx(0.15)
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "metrics.csv",
+        "severity_budget.csv",
+        "severity_scores.csv",
+    ]
+    with (tmp_path / "severity_budget.csv").open() as file:
+        budget = list(csv.DictReader(file))[0]
+    assert int(budget["fatal_incidents_captured"]) == 1
+    assert int(budget["injury_or_fatal_incidents_captured"]) == 2
+
+
+def test_severity_regression_rejects_nonordinal_targets() -> None:
+    with pytest.raises(ValueError, match="values 1, 2, and 3"):
+        evaluate_severity_regression(
+            np.array([0.0, 1.0]),
+            np.array([1.0, 2.0]),
+        )

@@ -14,6 +14,7 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     log_loss,
+    mean_absolute_error,
     precision_recall_fscore_support,
     precision_recall_curve,
 )
@@ -41,6 +42,17 @@ class SeverityMetrics:
     multiclass_log_loss: float
     macro_f1: float
     ordinal_mae: float
+
+    def to_dict(self) -> dict[str, float | int]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SeverityRegressionMetrics:
+    """Minimal metrics for direct conditional-severity scores."""
+
+    mean_absolute_error: float
+    constant_pdo_mean_absolute_error: float
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -134,6 +146,28 @@ def evaluate_severity(
         ),
         macro_f1=float(f1_score(labels, predicted, average="macro")),
         ordinal_mae=float(np.mean(np.abs(labels - predicted))),
+    )
+
+
+def severity_regression_mae(y_true, predictions: np.ndarray) -> float:
+    """Return MAE for direct severity scores clipped to the 1--3 scale."""
+
+    labels, scores = _validated_severity_regression_inputs(y_true, predictions)
+    return float(mean_absolute_error(labels, scores))
+
+
+def evaluate_severity_regression(
+    y_true,
+    predictions: np.ndarray,
+) -> SeverityRegressionMetrics:
+    """Evaluate direct severity scores against an always-PDO baseline."""
+
+    labels, scores = _validated_severity_regression_inputs(y_true, predictions)
+    return SeverityRegressionMetrics(
+        mean_absolute_error=float(mean_absolute_error(labels, scores)),
+        constant_pdo_mean_absolute_error=float(
+            mean_absolute_error(labels, np.ones_like(labels))
+        ),
     )
 
 
@@ -290,6 +324,47 @@ def generate_severity_report(
     return metrics
 
 
+def generate_severity_regression_report(
+    model,
+    X,
+    y_true,
+    *,
+    output_dir: str | Path,
+    row_ids=None,
+) -> SeverityRegressionMetrics:
+    """Save direct severity scores, minimal metrics, and budget results."""
+
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+
+    labels, scores = _validated_severity_regression_inputs(
+        y_true,
+        model.predict(X),
+    )
+    metrics = evaluate_severity_regression(labels, scores)
+    identifiers = _validated_row_ids(row_ids, len(labels))
+
+    with (output / "metrics.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["metric", "value"])
+        writer.writerows(metrics.to_dict().items())
+
+    with (output / "severity_scores.csv").open("w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["row_id", "actual_severity", "predicted_severity"])
+        writer.writerows(zip(identifiers, labels, scores))
+
+    budget_rows = _severity_budget_rows(
+        labels.astype(int) - 1,
+        scores,
+    )
+    with (output / "severity_budget.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(budget_rows[0]))
+        writer.writeheader()
+        writer.writerows(budget_rows)
+    return metrics
+
+
 def _validated_severity_inputs(
     y_true,
     probabilities: np.ndarray,
@@ -308,6 +383,23 @@ def _validated_severity_inputs(
     if labels.min() < 0 or labels.max() >= values.shape[1]:
         raise ValueError("Severity targets are outside the probability columns.")
     return labels, values
+
+
+def _validated_severity_regression_inputs(
+    y_true,
+    predictions,
+) -> tuple[np.ndarray, np.ndarray]:
+    labels = np.asarray(y_true, dtype=float).reshape(-1)
+    scores = np.asarray(predictions, dtype=float).reshape(-1)
+    if labels.size == 0:
+        raise ValueError("Severity targets cannot be empty.")
+    if len(labels) != len(scores):
+        raise ValueError("Targets and predictions must have the same length.")
+    if not np.isfinite(labels).all() or not np.isfinite(scores).all():
+        raise ValueError("Targets and predictions must be finite.")
+    if not np.isin(labels, DEFAULT_SEVERITY_WEIGHTS).all():
+        raise ValueError("Severity targets must use the values 1, 2, and 3.")
+    return labels, np.clip(scores, 1.0, 3.0)
 
 
 def _validated_probability_matrix(values: np.ndarray) -> np.ndarray:

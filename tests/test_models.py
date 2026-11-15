@@ -7,7 +7,13 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from collab_sol.models import FTTransformerClassifier, TorchMLPClassifier
+from collab_sol.models import (
+    FTTransformerClassifier,
+    FTTransformerMulticlassClassifier,
+    FTTransformerRegressor,
+    TorchMLPClassifier,
+    TorchMLPRegressor,
+)
 
 
 def test_torch_mlp_fits_and_returns_binary_probabilities() -> None:
@@ -61,6 +67,30 @@ def test_torch_mlp_fits_and_returns_multiclass_probabilities() -> None:
     assert probabilities.sum(axis=1) == pytest.approx(np.ones(90))
 
 
+def test_torch_mlp_regressor_returns_bounded_severity_scores() -> None:
+    rng = np.random.default_rng(42)
+    features = rng.normal(size=(60, 4)).astype(np.float32)
+    labels = np.tile(np.array([1.0, 2.0, 3.0]), 20)
+    model = TorchMLPRegressor(
+        hidden_width=8,
+        n_layers=1,
+        dropout=0.0,
+        learning_rate=0.01,
+        weight_decay=0.0,
+        batch_size=15,
+        max_epochs=2,
+        patience=2,
+        random_state=42,
+    )
+
+    assert model.fit(features, labels) is model
+    predictions = model.predict(features)
+
+    assert predictions.shape == (60,)
+    assert np.isfinite(predictions).all()
+    assert ((predictions >= 1) & (predictions <= 3)).all()
+
+
 def test_ft_transformer_fits_and_returns_binary_probabilities() -> None:
     if find_spec("rtdl_revisiting_models") is None:
         pytest.skip("FT-Transformer optional dependency is not installed.")
@@ -87,6 +117,63 @@ def test_ft_transformer_fits_and_returns_binary_probabilities() -> None:
     assert probabilities.shape == (64, 2)
     assert np.isfinite(probabilities).all()
     assert probabilities.sum(axis=1) == pytest.approx(np.ones(64))
+
+
+def test_ft_transformer_regressor_returns_bounded_severity_scores() -> None:
+    if find_spec("rtdl_revisiting_models") is None:
+        pytest.skip("FT-Transformer optional dependency is not installed.")
+
+    rng = np.random.default_rng(42)
+    continuous = rng.normal(size=(60, 2)).astype(np.float32)
+    categories = rng.integers(0, 3, size=(60, 1)).astype(np.float32)
+    features = np.column_stack([continuous, categories])
+    labels = np.tile(np.array([1.0, 2.0, 3.0]), 20)
+    model = FTTransformerRegressor(
+        n_cat_features=1,
+        n_blocks=1,
+        d_block=8,
+        attention_n_heads=2,
+        batch_size=15,
+        fixed_epochs=1,
+        max_epochs=1,
+        verbose=False,
+    )
+
+    assert model.fit(features, labels) is model
+    predictions = model.predict(features)
+
+    assert predictions.shape == (60,)
+    assert np.isfinite(predictions).all()
+    assert ((predictions >= 1) & (predictions <= 3)).all()
+
+
+def test_ft_transformer_returns_multiclass_probabilities() -> None:
+    if find_spec("rtdl_revisiting_models") is None:
+        pytest.skip("FT-Transformer optional dependency is not installed.")
+
+    rng = np.random.default_rng(42)
+    continuous = rng.normal(size=(60, 2)).astype(np.float32)
+    categories = rng.integers(0, 3, size=(60, 1)).astype(np.float32)
+    features = np.column_stack([continuous, categories])
+    labels = np.tile(np.arange(3), 20)
+    model = FTTransformerMulticlassClassifier(
+        n_classes=3,
+        n_cat_features=1,
+        n_blocks=1,
+        d_block=8,
+        attention_n_heads=2,
+        batch_size=15,
+        fixed_epochs=1,
+        max_epochs=1,
+        verbose=False,
+    )
+
+    assert model.fit(features, labels) is model
+    probabilities = model.predict_proba(features)
+
+    assert probabilities.shape == (60, 3)
+    assert np.isfinite(probabilities).all()
+    assert probabilities.sum(axis=1) == pytest.approx(np.ones(60))
 
 
 def test_ft_transformer_inference_respects_batch_size() -> None:
