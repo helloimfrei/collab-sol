@@ -146,15 +146,16 @@ for formulation, model in RUNS:
     run_name = f"{formulation}_{model}"
     run_dir = run_root / run_name
     metadata = json.loads((run_dir / "run.json").read_text())
+    test_metrics = metadata["test_metrics"]
     if formulation == "classification":
         validation_metric = "multiclass_log_loss"
         validation_score = metadata["mean_validation_log_loss"]
-        test_score = metadata["test_metrics"]["multiclass_log_loss"]
+        test_score = test_metrics["multiclass_log_loss"]
         continuous_mae = metadata["test_continuous_severity_mae"]
     else:
         validation_metric = "mean_absolute_error"
         validation_score = metadata["mean_validation_mae"]
-        test_score = metadata["test_metrics"]["mean_absolute_error"]
+        test_score = test_metrics["mean_absolute_error"]
         continuous_mae = test_score
 
     row = {
@@ -164,6 +165,14 @@ for formulation, model in RUNS:
         "mean_validation_score": validation_score,
         "native_test_score": test_score,
         "test_continuous_severity_mae": continuous_mae,
+        "fatal_prevalence": test_metrics["fatal_prevalence"],
+        "fatal_average_precision": test_metrics["fatal_average_precision"],
+        "injury_or_fatal_prevalence": test_metrics[
+            "injury_or_fatal_prevalence"
+        ],
+        "injury_or_fatal_average_precision": test_metrics[
+            "injury_or_fatal_average_precision"
+        ],
     }
     for budget in (50, 100, 500, 1_000):
         values = budget_values(run_dir / "severity_budget.csv", budget)
@@ -182,6 +191,30 @@ for formulation, model in RUNS:
             "severity_lift_over_all_incidents"
         ]
     comparison_rows.append(row)
+
+fatal_prevalence = float(comparison_rows[0]["fatal_prevalence"])
+serious_prevalence = float(
+    comparison_rows[0]["injury_or_fatal_prevalence"]
+)
+random_row: dict[str, str | float] = {
+    "formulation": "baseline",
+    "model": "random_ranking",
+    "validation_metric": "",
+    "mean_validation_score": "",
+    "native_test_score": "",
+    "test_continuous_severity_mae": "",
+    "fatal_prevalence": fatal_prevalence,
+    "fatal_average_precision": fatal_prevalence,
+    "injury_or_fatal_prevalence": serious_prevalence,
+    "injury_or_fatal_average_precision": serious_prevalence,
+}
+for budget in (50, 100, 500, 1_000):
+    random_row[f"fatal_captured_at_{budget}"] = budget * fatal_prevalence
+    random_row[f"serious_captured_at_{budget}"] = (
+        budget * serious_prevalence
+    )
+    random_row[f"severity_lift_at_{budget}"] = 1.0
+comparison_rows.append(random_row)
 
 with (run_root / "model_comparison.csv").open("w", newline="") as file:
     writer = csv.DictWriter(file, fieldnames=list(comparison_rows[0]))

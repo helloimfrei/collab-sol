@@ -123,6 +123,10 @@ def test_severity_metrics_use_three_class_probabilities() -> None:
 
     assert metrics.multiclass_log_loss > 0
     assert metrics.macro_f1 == pytest.approx(1.0)
+    assert metrics.fatal_prevalence == pytest.approx(1 / 3)
+    assert metrics.fatal_average_precision == pytest.approx(1.0)
+    assert metrics.injury_or_fatal_prevalence == pytest.approx(2 / 3)
+    assert metrics.injury_or_fatal_average_precision == pytest.approx(1.0)
     assert metrics.ordinal_mae == pytest.approx(0.0)
     assert scores == pytest.approx([1.2, 2.0, 2.8])
 
@@ -147,6 +151,10 @@ def test_severity_report_writes_probabilities_metrics_and_budgets(tmp_path) -> N
     )
 
     assert metrics.macro_f1 == pytest.approx(1.0)
+    assert metrics.fatal_prevalence == pytest.approx(0.5)
+    assert metrics.fatal_average_precision == pytest.approx(1.0)
+    assert metrics.injury_or_fatal_prevalence == pytest.approx(0.75)
+    assert metrics.injury_or_fatal_average_precision == pytest.approx(1.0)
     for filename in (
         "metrics.csv",
         "severity_scores.csv",
@@ -193,6 +201,10 @@ def test_severity_regression_report_is_minimal_and_budget_focused(
 
     assert metrics.mean_absolute_error == pytest.approx(0.15)
     assert metrics.constant_pdo_mean_absolute_error == pytest.approx(0.75)
+    assert metrics.fatal_prevalence == pytest.approx(0.25)
+    assert metrics.fatal_average_precision == pytest.approx(1.0)
+    assert metrics.injury_or_fatal_prevalence == pytest.approx(0.5)
+    assert metrics.injury_or_fatal_average_precision == pytest.approx(1.0)
     assert severity_regression_mae(labels, predictions) == pytest.approx(0.15)
     assert sorted(path.name for path in tmp_path.iterdir()) == [
         "metrics.csv",

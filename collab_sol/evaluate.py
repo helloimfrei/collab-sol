@@ -42,6 +42,10 @@ class SeverityMetrics:
     multiclass_log_loss: float
     macro_f1: float
     ordinal_mae: float
+    fatal_prevalence: float
+    fatal_average_precision: float
+    injury_or_fatal_prevalence: float
+    injury_or_fatal_average_precision: float
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -53,6 +57,10 @@ class SeverityRegressionMetrics:
 
     mean_absolute_error: float
     constant_pdo_mean_absolute_error: float
+    fatal_prevalence: float
+    fatal_average_precision: float
+    injury_or_fatal_prevalence: float
+    injury_or_fatal_average_precision: float
 
     def to_dict(self) -> dict[str, float | int]:
         return asdict(self)
@@ -140,12 +148,20 @@ def evaluate_severity(
 
     labels, values = _validated_severity_inputs(y_true, probabilities)
     predicted = values.argmax(axis=1)
+    scores = expected_severity(values)
+    ranking = _severity_ranking_metrics(
+        labels,
+        scores,
+        fatal_value=len(DEFAULT_SEVERITY_WEIGHTS) - 1,
+        serious_minimum=1,
+    )
     return SeverityMetrics(
         multiclass_log_loss=float(
             log_loss(labels, values, labels=np.arange(values.shape[1]))
         ),
         macro_f1=float(f1_score(labels, predicted, average="macro")),
         ordinal_mae=float(np.mean(np.abs(labels - predicted))),
+        **ranking,
     )
 
 
@@ -163,12 +179,42 @@ def evaluate_severity_regression(
     """Evaluate direct severity scores against an always-PDO baseline."""
 
     labels, scores = _validated_severity_regression_inputs(y_true, predictions)
+    ranking = _severity_ranking_metrics(
+        labels,
+        scores,
+        fatal_value=max(DEFAULT_SEVERITY_WEIGHTS),
+        serious_minimum=2,
+    )
     return SeverityRegressionMetrics(
         mean_absolute_error=float(mean_absolute_error(labels, scores)),
         constant_pdo_mean_absolute_error=float(
             mean_absolute_error(labels, np.ones_like(labels))
         ),
+        **ranking,
     )
+
+
+def _severity_ranking_metrics(
+    labels: np.ndarray,
+    scores: np.ndarray,
+    *,
+    fatal_value: float,
+    serious_minimum: float,
+) -> dict[str, float]:
+    """Evaluate one severity score against two interpretable binary outcomes."""
+
+    fatal = (labels == fatal_value).astype(int)
+    serious = (labels >= serious_minimum).astype(int)
+    return {
+        "fatal_prevalence": float(fatal.mean()),
+        "fatal_average_precision": float(
+            average_precision_score(fatal, scores)
+        ),
+        "injury_or_fatal_prevalence": float(serious.mean()),
+        "injury_or_fatal_average_precision": float(
+            average_precision_score(serious, scores)
+        ),
+    }
 
 
 def generate_risk_report(

@@ -133,10 +133,12 @@ uv run python scripts/train_severity_regression.py \
 ```
 
 The primary output is `severity_budget.csv`, which reports fatal and
-injury-or-fatal capture among the top-ranked crash cases. The deliberately
-small metric output contains only test MAE and the MAE of an always-property-
-damage-only baseline. The run also saves the fold search, fitted preprocessor,
-model artifact, direct per-row severity scores, and provenance in `run.json`.
+injury-or-fatal capture among the top-ranked crash cases. Supporting metrics
+include test MAE, the always-property-damage-only MAE, and AP for both fatal
+and injury-or-fatal outcomes. Each AP is reported with its prevalence, which
+is the expected AP from random ranking. The run also saves the fold search,
+fitted preprocessor, model artifact, direct per-row severity scores, and
+provenance in `run.json`.
 
 To compare classification and regression fairly across all four model
 families, run the process-isolated panel. Each formulation receives its own
@@ -148,9 +150,10 @@ uv run python scripts/train_severity_models.py \
   --trials 50 --require-cuda --xgboost-device cuda
 ```
 
-The panel writes `model_comparison.csv` with continuous-severity MAE and the
-shared budget results. `hyperparameter_search_spaces.csv` lists every tuned
-parameter, distribution, bound, choice, step, and log-scale setting.
+The panel writes `model_comparison.csv` with continuous-severity MAE, both AP
+metrics, the shared budget results, and an explicit random-ranking baseline
+row. `hyperparameter_search_spaces.csv` lists every tuned parameter,
+distribution, bound, choice, step, and log-scale setting.
 
 ## Legacy conditional-severity classifier
 
